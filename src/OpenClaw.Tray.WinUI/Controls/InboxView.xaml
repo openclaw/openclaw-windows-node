@@ -10,7 +10,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" ColumnSpacing="8" Margin="2,0,0,0">
+        <Grid x:Name="HeaderRow" Grid.Row="0" ColumnSpacing="8" Margin="2,0,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>

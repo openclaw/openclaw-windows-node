@@ -98,6 +98,13 @@ public interface IChatGatewayBridge : IDisposable
     Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string sessionKey, ChatHistoryPageRequest page) =>
         Task.FromException<ChatHistoryInfo>(new NotSupportedException("Older history is not available on this bridge."));
     long? ChatMessageReadConnectionEpoch => null;
+    object GatewayAuthorityIdentity => this;
+    bool IsAgentsListUnsupported => false;
+    Task PatchSessionConfirmedAsync(string sessionKey, SessionPatch patch, long connectionEpoch) =>
+        Task.FromException(new NotSupportedException("Response-confirmed session patches are unavailable on this bridge."));
+    /// <summary>Reads the session's file list through <c>sessions.files.list</c>; unsupported when the bridge has no Gateway.</summary>
+    Task<SessionFileList> ListSessionFilesAsync(string sessionKey) =>
+        Task.FromResult(new SessionFileList { Key = sessionKey, IsSupported = false });
     Task<ChatMessageReadResult> RequestChatMessageAsync(
         string sessionKey, string sessionId, string messageId, int maxChars,
         long expectedConnectionEpoch, CancellationToken cancellationToken) =>
@@ -108,6 +115,13 @@ public interface IChatGatewayBridge : IDisposable
         CancellationToken cancellationToken = default) =>
         Task.FromResult(AssistantMediaResolutionResult.Unavailable);
     /// <summary>
+    /// Reads one session workspace file (<c>sessions.files.get</c>) on the given connection epoch. The client
+    /// bounds the whole call, including queueing and sending, and honors cancellation; there is no retry.
+    /// </summary>
+    Task<SessionFileContent> GetSessionFileAsync(
+        string sessionKey, string path, long expectedConnectionEpoch, CancellationToken cancellationToken) =>
+        Task.FromResult(new SessionFileContent { Key = sessionKey, Path = path, IsSupported = false });
+    /// <summary>
     /// Downloads a structured file attachment through the default browser. The bridge
     /// resolves the ticketed Gateway URL and launches it itself; callers only receive the
     /// typed outcome, never the URL or ticket.
@@ -117,6 +131,14 @@ public interface IChatGatewayBridge : IDisposable
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(AssistantFileDownloadStatus.Unavailable);
+    /// <summary>True when the current connection advertises <c>skills.workshop.undo</c> with <c>operator.admin</c>.</summary>
+    bool CanUndoSkillChanges => false;
+    /// <summary>
+    /// Reverts one learned-skill notice's review as a unit. A timeout, disconnect or Gateway error reports
+    /// <see cref="ChatSkillUndoOutcome.Failed"/>; the Gateway's idempotent Undo makes a manual retry safe.
+    /// </summary>
+    Task<ChatSkillUndoOutcome> UndoSkillChangesAsync(ChatSkillChangeNotice notice, CancellationToken cancellationToken) =>
+        Task.FromResult(ChatSkillUndoOutcome.Unavailable);
     Task SendChatAbortAsync(string runId, string? sessionKey = null);
     Task ResolveExecApprovalAsync(string approvalId, string decision);
 
@@ -304,6 +326,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     public Task PatchSessionModelAsync(string sessionKey, string model) =>
         _client.PatchSessionAsync(sessionKey, new SessionPatch { Model = model });
 
+    public Task PatchSessionConfirmedAsync(string sessionKey, SessionPatch patch, long connectionEpoch) =>
+        _client.PatchSessionConfirmedAsync(sessionKey, patch, connectionEpoch);
+
     public Task ClearSessionModelAsync(string sessionKey) =>
         _client.PatchSessionAsync(sessionKey, new SessionPatch { Model = SessionPatch.Clear });
 
@@ -343,6 +368,13 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         _client.RequestChatHistoryAsync(sessionKey, page: page);
 
     public long? ChatMessageReadConnectionEpoch => _client.SessionMutationConnectionEpoch;
+    public object GatewayAuthorityIdentity => _client;
+    public bool IsAgentsListUnsupported => _client.IsAgentsListUnsupported;
+    public Task<SessionFileList> ListSessionFilesAsync(string sessionKey) =>
+        // Ask only Gateways that advertise the method; hello fills the list before Connected is raised.
+        _client.AdvertisedServerMethods.Contains("sessions.files.list", StringComparer.Ordinal)
+            ? _client.ListSessionFilesAsync(sessionKey)
+            : Task.FromResult(new SessionFileList { Key = sessionKey, IsSupported = false });
     public Task<ChatMessageReadResult> RequestChatMessageAsync(
         string sessionKey, string sessionId, string messageId, int maxChars,
         long expectedConnectionEpoch, CancellationToken cancellationToken) =>
@@ -353,6 +385,10 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         _client.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
+
+    public Task<SessionFileContent> GetSessionFileAsync(
+        string sessionKey, string path, long expectedConnectionEpoch, CancellationToken cancellationToken) =>
+        _client.ReadSessionFileAsync(sessionKey, path, expectedConnectionEpoch, cancellationToken);
 
 #if OPENCLAW_TRAY_TESTS
     // The test host has no WinRT launcher; tests inject one through the constructor.
@@ -370,6 +406,27 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
             ct => _client.ResolveAssistantFileDownloadUriAsync(sessionKey, media, ct),
             _launchUri,
             cancellationToken);
+
+    public bool CanUndoSkillChanges => _client.CanUndoSkillWorkshopReview;
+
+    public async Task<ChatSkillUndoOutcome> UndoSkillChangesAsync(
+        ChatSkillChangeNotice notice, CancellationToken cancellationToken)
+    {
+        if (_client.SessionMutationConnectionEpoch is not { } epoch)
+            return ChatSkillUndoOutcome.Failed;
+        try
+        {
+            return await _client.UndoSkillWorkshopReviewAsync(notice.AgentId, notice.RunId, epoch, cancellationToken)
+                    .ConfigureAwait(false) == SkillWorkshopUndoStatus.Undone
+                ? ChatSkillUndoOutcome.Undone
+                : ChatSkillUndoOutcome.Unavailable;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            Logger.Warn($"[ChatBridge] skills.workshop.undo failed ({ex.GetType().Name}).");
+            return ChatSkillUndoOutcome.Failed;
+        }
+    }
 
     public Task SendChatAbortAsync(string runId, string? sessionKey = null) => _client.SendChatAbortAsync(runId, sessionKey);
 

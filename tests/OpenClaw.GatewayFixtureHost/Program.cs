@@ -14,7 +14,7 @@ internal static class Program
             return await ListenForControlAsync(int.Parse(args[1]), args[2]);
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|sessions-hub|sessions-hub-readonly|chat-interactive|automations|context-usage-snapshots|dashboards|usage-analytics|systems-inventory|systems-empty] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--theme Light|Dark] [--browser-proxy] [--browser-proxy-foreign]");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|sessions-hub|sessions-hub-readonly|chat-interactive|automations|context-usage-snapshots|dashboards|usage-analytics|systems-inventory|systems-empty|gateway-themes] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--theme Light|Dark] [--browser-proxy] [--browser-proxy-foreign]");
             Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
@@ -75,7 +75,7 @@ internal static class Program
         if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or GatewayScenario.AutomationsName
             or GatewayScenario.DashboardsName or ContextUsageFixture.Name
             or UsageAnalyticsFixture.Name or SystemsFixture.InventoryName or SystemsFixture.EmptyName
-            or GatewayScenario.SessionsHubName or GatewayScenario.SessionsHubReadOnlyName))
+            or GatewayScenario.SessionsHubName or GatewayScenario.SessionsHubReadOnlyName or ThemesFixture.ScenarioName))
         {
             Console.Error.WriteLine("Unknown fixture scenario.");
             return 2;
@@ -137,6 +137,12 @@ internal static class Program
                 await run.InvokeAsync("app.navigate", new { page = "usage" });
                 Console.WriteLine("Synthetic usage analytics. Enter populated, empty, partial, legacy or released to switch replies. 'stop' ends this run.");
                 controls = Task.Run(() => ReadUsageAnalyticsControlsAsync(scenario.UsageAnalytics, stop));
+            }
+            else if (scenario.Themes is { } themes)
+            {
+                await run.InvokeAsync("app.navigate", new { page = "settings" });
+                Console.WriteLine("Synthetic theme catalog. Enter 'select <id>', 'accent <#hex|theme|none>' or 'background <faded|full-bleed|none|clear> [strength]' to change the dashboard choice, or 'reveal' to add a plugin theme. 'stop' ends this run.");
+                controls = Task.Run(() => ReadThemeControlsAsync(run, themes, stop));
             }
             if (durationSeconds is { } seconds)
                 stop.CancelAfter(TimeSpan.FromSeconds(seconds));
@@ -234,6 +240,77 @@ internal static class Program
         {
             Console.Error.WriteLine($"Fixture control rejected: {ex.Message}");
         }
+    }
+
+    private static async Task ReadThemeControlsAsync(GatewayFixtureRun run, ThemesFixture themes, CancellationTokenSource stop)
+    {
+        try
+        {
+            while (!stop.IsCancellationRequested &&
+                await Console.In.ReadLineAsync(stop.Token) is { } command)
+            {
+                if (command == "stop") { stop.Cancel(); return; }
+                if (command.StartsWith("select ", StringComparison.Ordinal) && command[7..].Trim() is { Length: > 0 } id)
+                {
+                    themes.SelectTheme(id);
+                    await run.Gateway.PublishUserPrefsChangedAsync();
+                    Console.WriteLine($"Selected {id} and published users.prefs.changed.");
+                    continue;
+                }
+                if (command.StartsWith("accent ", StringComparison.Ordinal) && command[7..].Trim() is { Length: > 0 } accent)
+                {
+                    themes.SetAccent(accent == "none" ? null : accent);
+                    await run.Gateway.PublishUserPrefsChangedAsync();
+                    Console.WriteLine($"Set the dashboard accent to {accent} and published users.prefs.changed.");
+                    continue;
+                }
+                if (command.StartsWith("background ", StringComparison.Ordinal) && BackgroundJson(command[11..]) is var (valid, json) && valid)
+                {
+                    themes.SetBackground(json);
+                    await run.Gateway.PublishUserPrefsChangedAsync();
+                    Console.WriteLine($"Set the dashboard background to {json ?? "none saved"} and published users.prefs.changed.");
+                    continue;
+                }
+                if (command != "reveal")
+                {
+                    Console.WriteLine("Unknown fixture control. No state changed.");
+                    continue;
+                }
+                themes.RevealPluginTheme();
+                await run.Gateway.PublishPluginsChangedAsync();
+                Console.WriteLine($"Revealed {ThemesFixture.RevealedThemeId} and published plugins.changed.");
+            }
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+    }
+
+    // 'faded 0.8', 'full-bleed', 'none' or 'clear' as the Control UI's ui.background value; clear means none saved.
+    private static (bool Valid, string? Json) BackgroundJson(string arguments)
+    {
+        var parts = arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length is 0 or > 2)
+            return (false, null);
+        if (parts[0] == "clear")
+            return (parts.Length == 1, null);
+        var strength = 0.5;
+        if (parts.Length == 2 && !double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out strength) || !double.IsFinite(strength) || strength is < 0 or > 1)
+            return (false, null);
+        var (kind, presentation) = parts[0] switch
+        {
+            "none" => ("none", "faded"),
+            "faded" => ("theme", "faded"),
+            "full-bleed" => ("theme", "full-bleed"),
+            _ => (null, null),
+        };
+        return kind is null ? (false, null) : (true, System.Text.Json.JsonSerializer.Serialize(new
+        {
+            source = new { kind },
+            presentation,
+            showOnNewSession = true,
+            showInSessions = true,
+            visibility = strength,
+        }));
     }
 
     private static async Task ReadUsageAnalyticsControlsAsync(UsageAnalyticsFixture usage, CancellationTokenSource stop)

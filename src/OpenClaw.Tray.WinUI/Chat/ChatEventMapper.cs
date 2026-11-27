@@ -28,9 +28,10 @@ internal static class ChatEventMapper
         if (string.IsNullOrEmpty(stream))
             return new(null);
 
+        // Live assistant text is rendered from chat frames only. Older Gateways also
+        // send it as agent assistant deltas; rendering both duplicates the reply.
         return stream switch
         {
-            "assistant" => new(MapAssistant(evt)),
             "reasoning" => new(MapReasoning(evt)),
             "thinking" => new(MapThinking(evt)),
             "lifecycle" => new(MapLifecycle(evt, getString)),
@@ -116,6 +117,7 @@ internal static class ChatEventMapper
         return mapped switch
         {
             ChatMessageEvent or ChatMessageDeltaEvent => ChatResponseOutputKind.Assistant,
+            ChatPreambleEvent { Complete: true, Text.Length: > 0 } => ChatResponseOutputKind.Assistant,
             ChatThinkingEvent or ChatReasoningEvent or ChatReasoningDeltaEvent or ChatReasoningStreamEvent or ChatReasoningReceiptEvent or
                 ChatIntentEvent => ChatResponseOutputKind.Reasoning,
             ChatToolStartEvent or ChatToolPresentationEvent or
@@ -204,19 +206,6 @@ internal static class ChatEventMapper
             new ChatToolOutputEvent(text, RunId: runId));
     }
 
-    private static ChatEvent? MapAssistant(AgentEventInfo evt)
-    {
-        if (evt.Data.ValueKind != JsonValueKind.Object)
-            return null;
-        if (evt.Data.TryGetProperty("delta", out var deltaProperty) &&
-            deltaProperty.ValueKind == JsonValueKind.String &&
-            deltaProperty.GetString() is { Length: > 0 } delta)
-        {
-            return new ChatMessageDeltaEvent(delta, AssistantPresentation(evt));
-        }
-        return null;
-    }
-
     private static ChatEvent? MapReasoning(AgentEventInfo evt)
     {
         if (evt.Data.ValueKind != JsonValueKind.Object)
@@ -293,7 +282,8 @@ internal static class ChatEventMapper
                     ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId))
                 : new ChatToolOutputEvent(output, tool.CallId, RunId: runId,
                     HandoffReceipt: tool.HandoffReceipt,
-                    ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId));
+                    ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId),
+                    DiffFacts: tool.ResultDiffFacts);
         }
     }
 
@@ -370,7 +360,9 @@ internal static class ChatEventMapper
                 ToolCallId: toolCallId,
                 RunId: evt.RunId,
                 HandoffReceipt: evt.Data.TryGetProperty("result", out var result)
-                    ? ChatToolHandoff.ReadReceipt(result) : null),
+                    ? ChatToolHandoff.ReadReceipt(result) : null,
+                DiffFacts: evt.Data.TryGetProperty("result", out var diffResult)
+                    ? ChatToolResultDiffFacts.Read(diffResult) : null),
             "error" => new ChatToolErrorEvent(
                 NativeToolProjector.ExtractToolErrorText(evt.Data, label),
                 ToolCallId: toolCallId,
@@ -446,6 +438,18 @@ internal static class ChatEventMapper
 
         var kind = NativeToolProjector.GetStringProperty(evt.Data, "kind");
         var phase = NativeToolProjector.GetStringProperty(evt.Data, "phase");
+        if (string.Equals(kind, "preamble", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(evt.RunId))
+                return null;
+            var preambleId = NativeToolProjector.GetStringProperty(evt.Data, "itemId").Trim();
+            if (preambleId.Length == 0)
+                preambleId = NativeToolProjector.GetStringProperty(evt.Data, "id").Trim();
+            var text = ChatContentFormatting.NormalizePreamble(
+                NativeToolProjector.GetStringProperty(evt.Data, "progressText"));
+            return new ChatPreambleEvent(evt.RunId, preambleId.Length == 0 ? null : preambleId, text, evt.Seq,
+                text.Length == 0 || phase is not ("start" or "update"));
+        }
         if (string.Equals(kind, "reasoning", StringComparison.OrdinalIgnoreCase))
         {
             return string.Equals(phase, "end", StringComparison.OrdinalIgnoreCase)

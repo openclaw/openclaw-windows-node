@@ -14,6 +14,7 @@ public enum ChatToolActivityCategory
     Search,
     Fetch,
     Generic,
+    Subagent,
 }
 
 public sealed record ChatToolActivityCount(
@@ -23,7 +24,8 @@ public sealed record ChatToolActivityCount(
 public sealed record ChatToolActivitySummary(
     IReadOnlyList<ChatToolActivityCount> Counts,
     int ToolCount,
-    ChatTimelineItem? NewestRunningTool)
+    ChatTimelineItem? NewestRunningTool,
+    int FailedCount = 0)
 {
     public bool IsRunning => NewestRunningTool is not null;
 }
@@ -63,7 +65,8 @@ public static class ChatToolActivityPresentation
         var scope = sessionId?.Trim().ToLowerInvariant().Split(':');
         if (scope is not ["agent", { Length: > 0 }, "dashboard", { Length: > 0 }] ||
             bubbleMode)
-            return ProjectActivity(entries, sessionId, timelineGeneration, showToolCalls);
+            return CoalesceActivity(
+                ProjectActivity(entries, sessionId, timelineGeneration, showToolCalls), sessionId, timelineGeneration);
 
         ChatMessagePresentation? Facts(ChatTimelineItem entry) =>
             entry.Presentation ?? metadata?.GetValueOrDefault(entry.Id)?.Presentation;
@@ -102,6 +105,7 @@ public static class ChatToolActivityPresentation
         foreach (var entry in entries)
         {
             if (turns.Count == 0 || entry.Kind == ChatTimelineItemKind.User ||
+                entry.Kind == ChatTimelineItemKind.Status && ChatNoticePresentation.StartsTurn(Facts(entry)) ||
                 Facts(entry)?.TurnBoundary == true || Independent(entry) ||
                 Facts(entry)?.SenderSession is not null || Facts(entry)?.SenderAgentId is not null)
                 turns.Add([]);
@@ -218,6 +222,45 @@ public static class ChatToolActivityPresentation
             Append(answers);
             Append(turn.Skip(end + 1));
         }
+        return CoalesceActivity(result, sessionId, timelineGeneration);
+    }
+
+    /// <summary>
+    /// Port of the web <c>coalesceActivityRuns</c>: tool rows and tool groups that nothing visible
+    /// separates read as one log, even across runs, so a burst of heartbeat calls is one group.
+    /// The merged group keeps the first call's key, which a single row already used.
+    /// </summary>
+    private static List<ChatToolActivityRow> CoalesceActivity(
+        IReadOnlyList<ChatToolActivityRow> rows, string? sessionId, long timelineGeneration)
+    {
+        var result = new List<ChatToolActivityRow>(rows.Count);
+        var pending = new List<ChatToolActivityRow>();
+        void Flush()
+        {
+            if (pending.Count == 1)
+                result.Add(pending[0]);
+            else if (pending.Count > 1)
+            {
+                var tools = pending.SelectMany(row =>
+                    row.Entry is { } single ? new[] { single } : (IEnumerable<ChatTimelineItem>)row.Tools).ToArray();
+                result.Add(new(ActivityKey(sessionId, timelineGeneration, tools[0].Id), null, tools, Summarize(tools)));
+            }
+            pending.Clear();
+        }
+        foreach (var row in rows)
+        {
+            var joins = row.IsActivityGroup && !row.IsCompletedWork ||
+                row.Entry is { Kind: ChatTimelineItemKind.ToolCall, ConfirmedHandoff: null, ToolInputPreparing: false } entry &&
+                entry.ToolReviews is not { Count: > 0 };
+            if (!joins)
+            {
+                Flush();
+                result.Add(row);
+                continue;
+            }
+            pending.Add(row);
+        }
+        Flush();
         return result;
     }
 
@@ -285,12 +328,16 @@ public static class ChatToolActivityPresentation
                 continue;
             }
 
+            // As on the web, only two or more operations form a counted group; a lone call
+            // keeps its own row so its verb, target or subagent stays visible. Both share a key.
             var tools = entries.Skip(index).Take(end - index).ToArray();
-            rows.Add(new ChatToolActivityRow(
-                ActivityKey(sessionId, timelineGeneration, tools[0].Id),
-                null,
-                tools,
-                Summarize(tools)));
+            rows.Add(tools.Length == 1
+                ? Standalone(tools[0], sessionId, timelineGeneration)
+                : new ChatToolActivityRow(
+                    ActivityKey(sessionId, timelineGeneration, tools[0].Id),
+                    null,
+                    tools,
+                    Summarize(tools)));
 
             index = end;
         }
@@ -370,30 +417,48 @@ public static class ChatToolActivityPresentation
     }
 
     /// <summary>
-    /// Counts operations per category, not distinct files, matching the web summary. A call that
-    /// wraps recorded nested calls is not counted itself; its nested calls are.
+    /// Counts operations per category, not distinct files, matching the web summary. A completed
+    /// call that wraps counted nested calls is not counted itself; its nested calls are. Routine
+    /// bookkeeping is left out unless nothing else remains, and only launches that started a
+    /// subagent count as subagents.
     /// </summary>
     public static ChatToolActivitySummary Summarize(IReadOnlyList<ChatTimelineItem> tools)
     {
+        var summary = Summarize(tools, skipRoutine: true);
+        return summary.ToolCount > 0 ? summary : Summarize(tools, skipRoutine: false);
+    }
+
+    private static ChatToolActivitySummary Summarize(IReadOnlyList<ChatTimelineItem> tools, bool skipRoutine)
+    {
+        // Port of the web resolveCompletedActivityWrappers: a completed wrapper is replaced only
+        // by a nested call that stays counted, so a wrapper over routine calls still counts.
         var wrappers = new HashSet<ChatTimelineItem>(ReferenceEqualityComparer.Instance);
-        var pending = new Stack<ChatToolCallNode>(GroupNested(tools));
-        while (pending.TryPop(out var node))
+        bool Shown(ChatToolCallNode node)
         {
-            if (node.Children.Count > 0)
-                wrappers.Add(node.Tool);
+            var childShown = false;
             foreach (var child in node.Children)
-                pending.Push(child);
+                childShown |= Shown(child);
+            if (childShown && node.Tool.ToolResult == ChatToolCallStatus.Success)
+                wrappers.Add(node.Tool);
+            return childShown || !(skipRoutine && ChatToolRowPresentation.IsRoutine(node.Tool));
         }
+        foreach (var root in GroupNested(tools))
+            Shown(root);
 
         var categoryCounts = new Dictionary<ChatToolActivityCategory, int>();
         var counted = 0;
+        var failed = 0;
         foreach (var tool in tools)
         {
-            if (wrappers.Contains(tool))
+            if (wrappers.Contains(tool) || skipRoutine && ChatToolRowPresentation.IsRoutine(tool))
                 continue;
             var category = Classify(tool.ToolName, tool.ToolArgs);
+            if (category == ChatToolActivityCategory.Subagent && !ChatToolRowPresentation.IsSubagentLaunch(tool))
+                category = ChatToolActivityCategory.Generic;
             categoryCounts[category] = categoryCounts.GetValueOrDefault(category) + 1;
             counted++;
+            if (tool.ToolResult is ChatToolCallStatus.Error)
+                failed++;
         }
 
         var counts = Enum.GetValues<ChatToolActivityCategory>()
@@ -402,12 +467,14 @@ public static class ChatToolActivityPresentation
             .ToArray();
         var newestRunning = tools.LastOrDefault(
             static tool => tool.ToolResult is null or ChatToolCallStatus.InProgress);
-        return new ChatToolActivitySummary(counts, counted, newestRunning);
+        return new ChatToolActivitySummary(counts, counted, newestRunning, failed);
     }
 
     public static ChatToolActivityCategory Classify(string? toolName, JsonObject? args = null)
     {
         var name = NormalizeToolName(toolName);
+        if (name == "sessions_spawn")
+            return ChatToolActivityCategory.Subagent;
         if (Matches(name, "str_replace_editor", "str_replace_based_edit_tool"))
         {
             var command = ReadString(args, "command")?.Trim().ToLowerInvariant();
@@ -455,7 +522,8 @@ public static class ChatToolActivityPresentation
     private static string NormalizeToolName(string? toolName)
     {
         var name = (toolName ?? string.Empty).Trim().ToLowerInvariant();
-        foreach (var prefix in new[] { "functions.", "tools.", "mcp." })
+        ReadOnlySpan<string> prefixes = ["functions.", "tools.", "mcp."];
+        foreach (var prefix in prefixes)
         {
             if (name.StartsWith(prefix, StringComparison.Ordinal))
                 name = name[prefix.Length..];
@@ -463,11 +531,16 @@ public static class ChatToolActivityPresentation
         return name.Replace('-', '_').Replace(' ', '_');
     }
 
-    private static bool Matches(string name, params string[] aliases) =>
-        aliases.Any(alias =>
-            string.Equals(name, alias, StringComparison.Ordinal)
-            || name.EndsWith($".{alias}", StringComparison.Ordinal)
-            || name.EndsWith($"_{alias}", StringComparison.Ordinal));
+    private static bool Matches(string name, params ReadOnlySpan<string> aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            if (name.EndsWith(alias, StringComparison.Ordinal)
+                && (name.Length == alias.Length || name[name.Length - alias.Length - 1] is '.' or '_'))
+                return true;
+        }
+        return false;
+    }
 
     private static string? ReadString(JsonObject? args, string propertyName) =>
         args?.TryGetPropertyValue(propertyName, out var node) == true
@@ -494,7 +567,10 @@ public sealed record ChatToolActivityFormatTemplates(
     string GenericOne,
     string GenericMany,
     string Running,
-    string ToolFallback);
+    string ToolFallback,
+    string SubagentOne = "{0} subagent",
+    string SubagentMany = "{0} subagents",
+    string FailedCount = "{0} failed");
 
 /// <summary>Pure localized-template formatter matching the web tool-group summary policy.</summary>
 public static class ChatToolActivityFormatter
@@ -510,10 +586,14 @@ public static class ChatToolActivityFormatter
                 templates.Running,
                 string.IsNullOrWhiteSpace(running.ToolName)
                     ? templates.ToolFallback
-                    : running.ToolName);
+                    : ChatToolRowPresentation.DisplayName(running.ToolName));
         }
 
-        return string.Join(" · ", summary.Counts.Select(count => FormatCount(count, templates)));
+        // Like the web group summary, failures follow the counts as their own outcome.
+        var parts = summary.Counts.Select(count => FormatCount(count, templates)).ToList();
+        if (summary.FailedCount > 0)
+            parts.Add(string.Format(CultureInfo.CurrentCulture, templates.FailedCount, summary.FailedCount));
+        return string.Join(" · ", parts);
     }
 
     private static string FormatCount(
@@ -534,6 +614,8 @@ public static class ChatToolActivityFormatter
             (ChatToolActivityCategory.Search, false) => templates.SearchMany,
             (ChatToolActivityCategory.Fetch, true) => templates.FetchOne,
             (ChatToolActivityCategory.Fetch, false) => templates.FetchMany,
+            (ChatToolActivityCategory.Subagent, true) => templates.SubagentOne,
+            (ChatToolActivityCategory.Subagent, false) => templates.SubagentMany,
             (_, true) => templates.GenericOne,
             _ => templates.GenericMany,
         };
@@ -558,10 +640,32 @@ public sealed class ChatToolActivityExpansionState
         return _overrides.TryGetValue(key, out var value) && value;
     }
 
+    /// <summary>
+    /// A group that has no choice of its own inherits the choice made on the single row it grew
+    /// from, so a row the user opened stays open when the next call joins it.
+    /// </summary>
+    public bool IsExpanded(string key, int collapseVersion, string? fallbackKey)
+    {
+        ResetIfNeeded(collapseVersion);
+        return _overrides.TryGetValue(key, out var value)
+            ? value
+            : fallbackKey is not null && _overrides.TryGetValue(fallbackKey, out var inherited) && inherited;
+    }
+
     public void SetExplicit(string key, bool isExpanded, int collapseVersion)
     {
         ResetIfNeeded(collapseVersion);
         _overrides[key] = isExpanded;
+    }
+
+    /// <summary>
+    /// True once the user has opened or closed this row since the last collapse-all, so content
+    /// built on first open is kept (and reused) when the row is closed and reopened.
+    /// </summary>
+    public bool HasChoice(string key, int collapseVersion)
+    {
+        ResetIfNeeded(collapseVersion);
+        return _overrides.ContainsKey(key);
     }
 
     private void ResetIfNeeded(int collapseVersion)
@@ -579,26 +683,102 @@ public sealed class ChatToolActivityMotionState
     private (string? Session, long Generation, long HistoryRevision)? _scope;
     private HashSet<string> _keys = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Returns the keys, in display order, that arrived at the conversation's tail since the
+    /// previous update. Rows above the newest already shown row (an older page) never enter.
+    /// A history refresh of the same thread keeps entrances for rows it appends after rows that
+    /// stayed, such as a recovered final reply; a refresh that keeps none replaced the history.
+    /// </summary>
+    /// <param name="admitInitial">
+    /// The first ready update follows an authoritatively empty conversation (for example the
+    /// welcome screen's first send), so its rows are new rather than loaded history.
+    /// </param>
     public IReadOnlySet<string> Update(
-        IEnumerable<string> completedWorkKeys,
+        IEnumerable<string> orderedKeys,
         string? sessionId,
         long generation,
         long historyRevision,
-        bool historyReady = true)
+        bool historyReady = true,
+        bool admitInitial = false,
+        IEnumerable<string>? eligibleKeys = null)
     {
+        var entering = new HashSet<string>(StringComparer.Ordinal);
         if (!historyReady)
         {
             _scope = null;
             _keys.Clear();
-            return new HashSet<string>(StringComparer.Ordinal);
+            return entering;
         }
         var scope = (sessionId, generation, historyRevision);
-        var keys = completedWorkKeys.ToHashSet(StringComparer.Ordinal);
-        var entering = _scope == scope
-            ? keys.Where(key => !_keys.Contains(key)).ToHashSet(StringComparer.Ordinal)
-            : new HashSet<string>(StringComparer.Ordinal);
+        var ordered = orderedKeys.Distinct(StringComparer.Ordinal).ToList();
+        var eligible = eligibleKeys?.ToHashSet(StringComparer.Ordinal);
+        var lastKnown = ordered.FindLastIndex(_keys.Contains);
+        var sameThread = _scope is { } previous &&
+            previous.Session == sessionId && previous.Generation == generation;
+        if (_scope == scope || sameThread && lastKnown >= 0 || _scope is null && admitInitial)
+        {
+            for (var index = lastKnown + 1; index < ordered.Count; index++)
+            {
+                if (eligible is null || eligible.Contains(ordered[index]))
+                    entering.Add(ordered[index]);
+            }
+        }
         _scope = scope;
-        _keys = keys;
+        _keys = ordered.ToHashSet(StringComparer.Ordinal);
         return entering;
+    }
+}
+
+/// <summary>Tracks independently timed close holds for each tool-detail disclosure.</summary>
+internal sealed class ChatToolDetailsCloseState
+{
+    private readonly object _gate = new();
+    private readonly Dictionary<string, int> _versions = new(StringComparer.Ordinal);
+    private HashSet<string> _closingKeys = new(StringComparer.Ordinal);
+    private int _revision;
+
+    internal int Revision
+    {
+        get
+        {
+            lock (_gate)
+                return _revision;
+        }
+    }
+
+    internal int SetClosing(string key, bool closing)
+    {
+        lock (_gate)
+        {
+            var version = ++_revision;
+            _versions[key] = version;
+            var next = new HashSet<string>(_closingKeys, StringComparer.Ordinal);
+            if (closing)
+                next.Add(key);
+            else
+                next.Remove(key);
+            _closingKeys = next;
+            return version;
+        }
+    }
+
+    internal IReadOnlySet<string> Snapshot()
+    {
+        lock (_gate)
+            return new HashSet<string>(_closingKeys, StringComparer.Ordinal);
+    }
+
+    internal bool CompleteClose(string key, int version)
+    {
+        lock (_gate)
+        {
+            if (!_versions.TryGetValue(key, out var current) || current != version || !_closingKeys.Contains(key))
+                return false;
+            var next = new HashSet<string>(_closingKeys, StringComparer.Ordinal);
+            next.Remove(key);
+            _closingKeys = next;
+            _revision++;
+            return true;
+        }
     }
 }

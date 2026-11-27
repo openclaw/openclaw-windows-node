@@ -5,6 +5,7 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
+using Windows.Foundation;
 
 namespace OpenClawTray.Chat;
 
@@ -25,9 +26,22 @@ namespace OpenClawTray.Chat;
 /// Border clips that band from the normal rendering, while the ItemsView itself stays
 /// opaque and live. The source surface samples the ItemsView before its parent's clip.
 /// The outer Border owns the masked band, leaving navigation and composer visuals alone.
+/// While the band is active, bring-into-view requests inside the wrapped scroller (keyboard
+/// caret, focus) are extended by the band height so their targets land above the fade.
 /// </remarks>
 internal static class ChatTranscriptFade
 {
+    // A linear ramp starts at full slope, so its top edge reads as a line across text. The mask
+    // follows smoothstep instead (flat at both ends), sampled finely enough to look continuous.
+    private const int FadeStopCount = 12;
+
+    /// <summary>Mask alpha at <paramref name="offset"/> (0 at the band's top, 1 at its bottom).</summary>
+    internal static byte FadeAlpha(float offset)
+    {
+        var t = Math.Clamp(offset, 0, 1);
+        return (byte)Math.Round(255 * (1 - t * t * (3 - 2 * t)));
+    }
+
     private sealed class State
     {
         public Border? Clipper { get; set; }
@@ -35,7 +49,26 @@ internal static class ChatTranscriptFade
         public bool Active { get; set; }
         public EventHandler<object>? LayoutChanged { get; set; }
         public Band? Band { get; set; }
+        public UIElement? BringTarget { get; set; }
     }
+
+    private static readonly TypedEventHandler<UIElement, BringIntoViewRequestedEventArgs> s_keepBringAboveBand =
+        static (_, args) =>
+        {
+            if (args.Handled)
+                return;
+            var rect = args.TargetRect;
+            if (rect.IsEmpty || rect is { Width: 0, Height: 0 })
+            {
+                if (args.TargetElement is not FrameworkElement target)
+                    return;
+                rect = new Rect(0, 0, target.ActualWidth, target.ActualHeight);
+            }
+            // The scroller aligns targets to its layout edge, which lies under the faded band.
+            // Extending the target downward lands it fully readable above the band; top-aligned
+            // requests keep their top edge.
+            args.TargetRect = new Rect(rect.X, rect.Y, rect.Width, rect.Height + ChatVisuals.TranscriptFadeHeight);
+        };
 
     private sealed class Band(Border clipper, UIElement content) : IDisposable
     {
@@ -45,8 +78,7 @@ internal static class ChatTranscriptFade
         private readonly CompositionVisualSurface _surface = ElementCompositionPreview.GetElementVisual(content).Compositor.CreateVisualSurface();
         private CompositionSurfaceBrush? _source;
         private CompositionLinearGradientBrush? _gradient;
-        private CompositionColorGradientStop? _opaque;
-        private CompositionColorGradientStop? _transparent;
+        private readonly List<CompositionColorGradientStop> _stops = [];
         private CompositionMaskBrush? _mask;
         public UIElement Content { get; } = content;
         public SpriteVisual Sprite { get; } = ElementCompositionPreview.GetElementVisual(content).Compositor.CreateSpriteVisual();
@@ -63,10 +95,14 @@ internal static class ChatTranscriptFade
             _gradient = compositor.CreateLinearGradientBrush();
             _gradient.StartPoint = Vector2.Zero;
             _gradient.EndPoint = Vector2.UnitY;
-            _opaque = compositor.CreateColorGradientStop(0, Colors.White);
-            _transparent = compositor.CreateColorGradientStop(1, Colors.Transparent);
-            _gradient.ColorStops.Add(_opaque);
-            _gradient.ColorStops.Add(_transparent);
+            for (var index = 0; index <= FadeStopCount; index++)
+            {
+                var offset = (float)index / FadeStopCount;
+                var stop = compositor.CreateColorGradientStop(offset,
+                    global::Windows.UI.Color.FromArgb(FadeAlpha(offset), 255, 255, 255));
+                _stops.Add(stop);
+                _gradient.ColorStops.Add(stop);
+            }
             _mask = compositor.CreateMaskBrush();
             _mask.Source = _source;
             _mask.Mask = _gradient;
@@ -97,8 +133,9 @@ internal static class ChatTranscriptFade
             _mask?.Dispose();
             _source?.Dispose();
             _gradient?.Dispose();
-            _opaque?.Dispose();
-            _transparent?.Dispose();
+            foreach (var stop in _stops)
+                stop.Dispose();
+            _stops.Clear();
             _surface.Dispose();
             _clip.Dispose();
         }
@@ -116,7 +153,8 @@ internal static class ChatTranscriptFade
         state.LayoutChanged = (_, _) =>
         {
             if (!ReferenceEquals(host.Child, state.Clipper) ||
-                !ReferenceEquals(state.Clipper?.Child, state.Content))
+                !ReferenceEquals(state.Clipper?.Child, state.Content) ||
+                (state.Band is not null && !ReferenceEquals(ScrollContent(state.Content), state.BringTarget)))
                 Refresh(host);
         };
         host.SizeChanged += OnHostSizeChanged;
@@ -191,10 +229,31 @@ internal static class ChatTranscriptFade
             state.Band = band;
         }
         state.Band.Update();
+        var bringTarget = ScrollContent(content);
+        if (!ReferenceEquals(bringTarget, state.BringTarget))
+        {
+            if (state.BringTarget is { } previous)
+                previous.BringIntoViewRequested -= s_keepBringAboveBand;
+            state.BringTarget = bringTarget;
+            if (bringTarget is not null)
+                bringTarget.BringIntoViewRequested += s_keepBringAboveBand;
+        }
     }
+
+    // Bring requests bubble from this content to the scroller, which consumes them next.
+    private static UIElement? ScrollContent(UIElement? content) => content switch
+    {
+        ItemsView items => items.ScrollView?.Content as UIElement,
+        ScrollView view => view.Content as UIElement,
+        ScrollViewer viewer => viewer.Content as UIElement,
+        _ => null,
+    };
 
     private static void Release(Border host, State state)
     {
+        if (state.BringTarget is { } bringTarget)
+            bringTarget.BringIntoViewRequested -= s_keepBringAboveBand;
+        state.BringTarget = null;
         if (state.Band is null)
             return;
         ElementCompositionPreview.SetElementChildVisual(host, null);

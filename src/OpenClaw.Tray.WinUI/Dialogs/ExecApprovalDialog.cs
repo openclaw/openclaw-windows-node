@@ -202,6 +202,7 @@ public sealed class ExecApprovalDialog : WindowEx
         Grid.SetRow(root, 1);
         outerGrid.Children.Add(root);
         Content = outerGrid;
+        Theming.BackdropPolicy.Apply(this);
 
         // Escape denies from anywhere in the window.
         var escAccel = new Microsoft.UI.Xaml.Input.KeyboardAccelerator

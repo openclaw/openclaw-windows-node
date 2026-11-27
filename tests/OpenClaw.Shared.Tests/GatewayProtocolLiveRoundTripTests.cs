@@ -172,7 +172,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Null(status);
             Assert.False(server.HasFrame("update.status"));
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            var exception = await Assert.ThrowsAsync<GatewayRequestNotSentException>(
                 () => client.SendWizardRequestAsync("update.status", new { }, timeoutMs: 1_000));
             Assert.Contains("Gateway handshake has not completed", exception.Message);
             Assert.False(server.HasFrame("update.status"));
@@ -239,7 +239,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         _output.WriteLine($"[trace] {method}: hello-ok accepted on same socket; IsSupported=true; exactly one request/response completed");
 
         await client.DisconnectAsync();
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => read());
+        var exception = await Assert.ThrowsAsync<GatewayRequestNotSentException>(() => read());
         Assert.Equal("Gateway connection is not open", exception.Message);
         _output.WriteLine($"[trace] {method}: disconnected read still throws; only handshake-pending reads return unavailable");
     }

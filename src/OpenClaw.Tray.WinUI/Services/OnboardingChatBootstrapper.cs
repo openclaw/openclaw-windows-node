@@ -95,6 +95,10 @@ public static class OnboardingChatBootstrapper
             }
         }
 
+        // The workspace probe can return a list that arrived after the caller cancelled; a
+        // cancelled bootstrap must not go on to send the first-run prompt.
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (Interlocked.CompareExchange(ref s_inFlight, 1, 0) != 0)
         {
             Logger.Info("[OnboardingChatBootstrapper] Bootstrap skipped because another gateway send is in flight");
@@ -256,7 +260,9 @@ public static class OnboardingChatBootstrapper
                 return null;
 
             var completed = await Task.WhenAny(_completion.Task, Task.Delay(remaining, cancellationToken)).ConfigureAwait(true);
-            if (completed != _completion.Task)
+            // The completion continuation is queued, so on a busy thread pool the deadline can
+            // resume this wait first even though the file list already arrived.
+            if (completed != _completion.Task && !_completion.Task.IsCompleted)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 return null;
@@ -325,7 +331,9 @@ public static class OnboardingChatBootstrapper
                 return false;
 
             var completed = await Task.WhenAny(_completion.Task, Task.Delay(remaining, cancellationToken)).ConfigureAwait(true);
-            if (completed != _completion.Task)
+            // The completion continuation is queued, so on a busy thread pool the deadline can
+            // resume this wait first even though the run already completed.
+            if (completed != _completion.Task && !_completion.Task.IsCompleted)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 return false;

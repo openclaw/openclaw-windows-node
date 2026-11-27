@@ -23,7 +23,8 @@ internal static class ChatAssistantMediaRenderer
         Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantMediaResolutionResult>>?
             resolver,
         Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
-            fileDownloader = null)
+            fileDownloader = null,
+        Action<ChatAssistantMediaPresentation>? openFile = null)
     {
         if (media.Kind == ChatMediaContentKind.Image
             && !string.IsNullOrWhiteSpace(sessionKey)
@@ -40,7 +41,7 @@ internal static class ChatAssistantMediaRenderer
             && fileDownloader is not null)
         {
             return Component<ChatAssistantFileCard, ChatAssistantFileCardProps>(
-                new(media, sessionKey, fileDownloader));
+                new(media, sessionKey, fileDownloader, openFile));
         }
 
         return BuildUnavailableCard(media);
@@ -75,7 +76,8 @@ internal static class ChatAssistantMediaRenderer
         ChatAssistantMediaPresentation media,
         string statusText,
         string detail,
-        Element? action)
+        Element? action,
+        Action? openFile = null)
     {
         var displayName = DisplayName(media);
         var accessibleName = $"{displayName}. {statusText}";
@@ -88,7 +90,7 @@ internal static class ChatAssistantMediaRenderer
             .Center();
         var glyphBackground = Border(glyph)
             .Size(36, 36)
-            .CornerRadius(8)
+            .ThemedCorner(8)
             .Background(Theme.Ref("SubtleFillColorSecondaryBrush"));
         var title = TextBlock(displayName)
             .FontSize(13)
@@ -108,13 +110,19 @@ internal static class ChatAssistantMediaRenderer
             10,
             glyphBackground,
             VStack(2, title, status).VAlign(VerticalAlignment.Center));
+        Element fileContent = openFile is null ? content
+            : Button(content, openFile)
+                .Resources(ChatVisuals.ToolbarButtonResources)
+                .Padding(0).BorderThickness(0)
+                .AutomationId("ChatAssistantFileOpen")
+                .AutomationName(LocalizationHelper.Format("Chat_Tool_OpenFile", displayName));
         Element body = action is null
-            ? content
-            : HStack(10, content, action);
+            ? fileContent
+            : HStack(10, fileContent, action);
 
         return Border(body)
             .Padding(10, 8)
-            .CornerRadius(10)
+            .ThemedCorner(10)
             .Background(Theme.Ref("SubtleFillColorTertiaryBrush"))
             .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
             .BorderThickness(1)
@@ -157,7 +165,8 @@ internal static class ChatAssistantMediaRenderer
 internal sealed record ChatAssistantFileCardProps(
     ChatAssistantMediaPresentation Media,
     string SessionKey,
-    Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>> Download);
+    Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>> Download,
+    Action<ChatAssistantMediaPresentation>? OpenFile = null);
 
 internal sealed record ChatAssistantFileDownloadState(
     ChatMediaContentInfo Reference,
@@ -165,7 +174,7 @@ internal sealed record ChatAssistantFileDownloadState(
 
 /// <summary>
 /// A downloadable file attachment (for example a zip the agent produced). Files are
-/// never rendered inline. Download asks the connection-owned chat bridge to start a
+/// previewed as text in the read-only sidebar. Download asks the connection-owned chat bridge to start a
 /// browser download and shows only the typed outcome; the card never sees the URL or
 /// its Gateway ticket.
 /// </summary>
@@ -213,11 +222,23 @@ internal sealed class ChatAssistantFileCard : Component<ChatAssistantFileCardPro
         var actionLabel = failed
             ? ChatAssistantMediaRenderer.LocalizedOrDefault("Chat_AssistantMedia_Retry", "Retry")
             : ChatAssistantMediaRenderer.LocalizedOrDefault("Chat_AssistantMedia_Download", "Download");
+        var action = Button(
+                TextBlock(failed ? FluentIconCatalog.Refresh : FluentIconCatalog.Download)
+                    .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                    .FontSize(16)
+                    .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw),
+                Download)
+            .Resources(ChatVisuals.ToolbarButtonResources)
+            .VAlign(VerticalAlignment.Center)
+            .AutomationName(actionLabel)
+            .ToolTip(actionLabel)
+            .AutomationId("ChatAssistantFileDownload");
         return ChatAssistantMediaRenderer.BuildCard(
             props.Media,
             statusText,
             statusText,
-            Button(actionLabel, Download).AutomationName(actionLabel));
+            action,
+            props.OpenFile is { } openFile ? () => openFile(props.Media) : null);
     }
 
     private static string DescribeFile(ChatAssistantMediaPresentation media)
@@ -353,7 +374,7 @@ internal sealed class ChatAssistantImageCard : Component<ChatAssistantImageCardP
                 Stretch = Stretch.Uniform,
             })
             .Size(pixelWidth * scale, pixelHeight * scale)
-            .CornerRadius(10)
+            .ThemedCorner(10)
             .AutomationName(media.Alt ?? ChatAssistantMediaRenderer.DisplayName(media));
         return Button(preview, openViewer)
             .Padding(0)
@@ -441,7 +462,9 @@ internal sealed record ChatAssistantImageLoadState(
 
 internal static class ChatAttachmentBitmapDecoder
 {
-    internal static BitmapImage? TryDecode(byte[] bytes)
+    internal static BitmapImage? TryDecode(
+        byte[] bytes,
+        uint maximumDecodeDimension = ChatAssistantImageDecodePolicy.MaximumDecodeDimension)
     {
         try
         {
@@ -459,7 +482,8 @@ internal static class ChatAttachmentBitmapDecoder
                     decoder.PixelWidth,
                     decoder.PixelHeight,
                     out var decodeWidth,
-                    out var decodeHeight))
+                    out var decodeHeight,
+                    maximumDecodeDimension))
             {
                 return null;
             }

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text.Json;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Dashboards;
 using OpenClawTray.Dashboards;
@@ -753,6 +754,92 @@ public sealed class BoardDocumentModelTests
         Assert.NotNull(model.Snapshot.Board);
     }
 
+    [Fact]
+    public async Task ProgressAliases_ReadTheGatewayScopedCardOnce()
+    {
+        var client = ProgressClient();
+        client.Boards.Enqueue(Board(1, ("main", 0)) with
+        {
+            Widgets = [ProgressWidget("alias", "Main"), ProgressWidget("scoped", "agent:main:main")],
+        });
+        client.ProgressResults.Enqueue(ProgressCard(3));
+        using var model = new BoardDocumentModel(client, Target, action => action(), new FakeScheduler().Schedule);
+
+        await model.LoadAsync();
+
+        Assert.Equal(new ProgressCardTarget("agent:main:main", null, "agent:main:main"), Assert.Single(client.ProgressTargets));
+        Assert.Equal(new[] { "alias", "scoped" }, model.Snapshot.ProgressCards.Keys.Order());
+        Assert.All(model.Snapshot.ProgressCards.Values, state =>
+        {
+            Assert.Equal(BoardProgressLoadStatus.Ready, state.Status);
+            Assert.Equal(3, state.Card!.Revision);
+        });
+    }
+
+    [Fact]
+    public async Task ProgressSessionReset_AcceptsTheRestartedLowerRevision()
+    {
+        var client = ProgressClient();
+        client.Boards.Enqueue(Board(1, ("main", 0)) with { Widgets = [ProgressWidget("progress", "main")] });
+        client.ProgressResults.Enqueue(ProgressCard(5));
+        using var model = new BoardDocumentModel(client, Target, action => action(), new FakeScheduler().Schedule);
+        await model.LoadAsync();
+
+        client.ProgressResults.Enqueue(ProgressCard(1));
+        client.RaiseSessionListChanged(new SessionListChange("reset", "agent:main:main", "main"));
+
+        var state = model.Snapshot.ProgressCards["progress"];
+        Assert.Equal(BoardProgressLoadStatus.Ready, state.Status);
+        Assert.Equal(1, state.Card!.Revision);
+        Assert.Equal(2, client.ProgressTargets.Count);
+    }
+
+    [Theory]
+    [InlineData("FORBIDDEN", null, BoardProgressLoadStatus.Denied, false)]
+    [InlineData("INVALID_REQUEST", "SESSION_PARTICIPATION_REQUIRED", BoardProgressLoadStatus.Denied, false)]
+    [InlineData("FORBIDDEN", "MISSING_SCOPE", BoardProgressLoadStatus.Unavailable, false)]
+    [InlineData("UNAVAILABLE", null, BoardProgressLoadStatus.Ready, true)]
+    public async Task ProgressRefreshFailure_KeepsTheCardOnlyWhenTheFailureIsTransient(
+        string code, string? detailCode, object expected, bool keepsCard)
+    {
+        var client = ProgressClient();
+        client.Boards.Enqueue(Board(1, ("main", 0)) with { Widgets = [ProgressWidget("progress", "main")] });
+        client.ProgressResults.Enqueue(ProgressCard(1));
+        using var model = new BoardDocumentModel(client, Target, action => action(), new FakeScheduler().Schedule);
+        await model.LoadAsync();
+
+        client.ProgressResults.Enqueue(GatewayRequestErrors.Create("refresh failed", code, detailCode));
+        client.RaiseProgressChanged(new BoardProgressChangedEvent("agent:main:main", 2));
+
+        var state = model.Snapshot.ProgressCards["progress"];
+        Assert.Equal((BoardProgressLoadStatus)expected, state.Status);
+        Assert.Equal(keepsCard, state.Card is not null);
+        Assert.Equal(keepsCard, state.Stale);
+    }
+
+    private static FakeBoardClient ProgressClient() => new()
+    {
+        PluginWidgetKinds = [new("session", "session:progress", "Session progress")],
+        AdvertisedServerMethods = ["board.get", "progressCard.get"],
+        SessionDefaults = new("main", "main", "agent:main:main"),
+    };
+
+    private static BoardProgressCard ProgressCard(int revision) =>
+        new("agent:main:main", revision, 1_700_000_000_000, "Progress " + revision, []);
+
+    private static BoardWidget ProgressWidget(string name, string sessionKey) => new()
+    {
+        Name = name,
+        TabId = "main",
+        ContentKind = BoardWidgetContentKind.Plugin,
+        PluginKind = "session:progress",
+        Props = JsonSerializer.SerializeToElement(new { sessionKey }),
+        SizeW = 6,
+        SizeH = 4,
+        Position = 0,
+        Revision = 1,
+    };
+
     private static BoardSnapshot Board(int revision, params (string Id, int Position)[] tabs) =>
         new(Target.SessionKey, revision, [.. tabs.Select(tab => new BoardTab(tab.Id, tab.Id, tab.Position, "right"))], []);
 
@@ -874,17 +961,35 @@ internal sealed class FakeBoardClient : IBoardGatewayClient
 
     public bool IsConnectedToGateway => Connected;
     public IReadOnlyList<string> GrantedOperatorScopes => Scopes;
-    public ImmutableArray<PluginWidgetKind> PluginWidgetKinds => [new("session", "session:report", "Report")];
+    public ImmutableArray<PluginWidgetKind> PluginWidgetKinds { get; set; } = [new("session", "session:report", "Report")];
     public Uri? GatewayHttpOrigin => new("http://127.0.0.1:18789/");
-    public IReadOnlyList<string> AdvertisedServerMethods => ["sessions.list", "board.get", "board.update", "board.widget.grant"];
+    public IReadOnlyList<string> AdvertisedServerMethods { get; set; } = ["sessions.list", "board.get", "board.update", "board.widget.grant"];
+    public BoardSessionDefaults? SessionDefaults { get; set; }
+    /// <summary>Scripted <c>progressCard.get</c> replies: a card, null for no card, or an exception to throw.</summary>
+    public Queue<object?> ProgressResults { get; } = new();
+    public List<ProgressCardTarget> ProgressTargets { get; } = [];
 
     public event EventHandler<BoardChangedEvent>? BoardChanged;
     public event EventHandler<BoardCommandEvent>? BoardCommandReceived;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;
+    public event EventHandler<BoardProgressChangedEvent>? ProgressCardChanged;
+    public event EventHandler<SessionListChange>? SessionListChanged;
 
     public void RaiseChanged(BoardChangedEvent e) => BoardChanged?.Invoke(this, e);
     public void RaiseCommand(BoardCommandEvent e) => BoardCommandReceived?.Invoke(this, e);
     public void RaiseSessionsUpdated() => SessionsUpdated?.Invoke(this, []);
+    public void RaiseProgressChanged(BoardProgressChangedEvent e) => ProgressCardChanged?.Invoke(this, e);
+    public void RaiseSessionListChanged(SessionListChange e) => SessionListChanged?.Invoke(this, e);
+
+    public Task<BoardProgressCard?> GetProgressCardAsync(ProgressCardTarget target, int timeoutMs = 15000)
+    {
+        ProgressTargets.Add(target);
+        return ProgressResults.Dequeue() switch
+        {
+            Exception failure => Task.FromException<BoardProgressCard?>(failure),
+            var card => Task.FromResult((BoardProgressCard?)card),
+        };
+    }
 
     public Task<DashboardSessionPage?> ListDashboardSessionsAsync(string? agentId, int offset = 0, int timeoutMs = 15000)
     {

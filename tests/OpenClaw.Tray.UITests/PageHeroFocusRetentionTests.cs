@@ -77,7 +77,7 @@ public sealed class PageHeroFocusRetentionTests(UIThreadFixture ui)
                         Find(surface!, "FocusAdd") is Button { ActualWidth: > 0 } &&
                         originalParent is Grid actionHost &&
                         Microsoft.UI.Xaml.Controls.Grid.GetRow(actionHost) == (narrow ? 1 : 0) &&
-                        Microsoft.UI.Xaml.Controls.Grid.GetColumn(actionHost) == (narrow ? 1 : 2) &&
+                        Microsoft.UI.Xaml.Controls.Grid.GetColumn(actionHost) == (narrow ? 0 : 1) &&
                         Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(actionHost) == (narrow ? 2 : 1),
                     "responsive action placement committed on the retained host",
                     () => $"Width={surface!.ActualWidth}; narrow={narrow}; " +
@@ -93,16 +93,15 @@ public sealed class PageHeroFocusRetentionTests(UIThreadFixture ui)
                     Assert.Same(originalContentGrid, Find(surface!, "FocusHeroGrid"));
                     Assert.Same(originalContentGrid, VisualTreeHelper.GetParent(host));
                     Assert.Equal(narrow ? 1 : 0, Microsoft.UI.Xaml.Controls.Grid.GetRow(host));
-                    Assert.Equal(narrow ? 1 : 2, Microsoft.UI.Xaml.Controls.Grid.GetColumn(host));
+                    Assert.Equal(narrow ? 0 : 1, Microsoft.UI.Xaml.Controls.Grid.GetColumn(host));
                     Assert.Equal(narrow ? 2 : 1, Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(host));
-                    var glyph = Assert.IsType<Border>(Find(surface!, "FocusHero:Glyph"));
                     var title = Assert.IsType<TextBlock>(Find(surface!, "FocusTitle"));
                     var copy = Assert.IsType<StackPanel>(VisualTreeHelper.GetParent(title));
                     Assert.Same(originalContentGrid, VisualTreeHelper.GetParent(copy));
                     Assert.Equal(narrow ? 2 : 1, Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(copy));
-                    var glyphBounds = glyph.TransformToVisual(originalContentGrid).TransformPoint(new Windows.Foundation.Point());
+                    Assert.Null(Find(surface!, "FocusHero:Glyph"));
                     var copyBounds = copy.TransformToVisual(originalContentGrid).TransformPoint(new Windows.Foundation.Point());
-                    Assert.InRange(copyBounds.X - glyphBounds.X - glyph.ActualWidth, 15.5, 16.5);
+                    Assert.InRange(copyBounds.X, -0.5, 0.5);
                     var actionBounds = host.TransformToVisual(originalContentGrid).TransformPoint(new Windows.Foundation.Point());
                     if (narrow)
                     {

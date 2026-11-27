@@ -237,11 +237,16 @@ internal static class UsageUi
             .AutomationName(text);
     }
 
-    public static Element IconButton(string glyph, string name, Action onClick, string automationId, bool enabled = true) =>
-        Button(TextBlock(glyph).FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(14), onClick)
+    public static Element IconButton(string glyph, string name, Action onClick, string automationId, bool enabled = true,
+        bool pageAction = false)
+    {
+        var button = Button(TextBlock(glyph).FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(pageAction ? 16 : 14), onClick)
             .SubtleButton()
             .IsEnabled(enabled)
             .ToolTip(name)
             .AutomationName(name)
             .AutomationId(automationId);
+        // Page actions (Refresh) share the 32x32 icon-only SubtleButton contract used by Systems.
+        return pageAction ? button.Size(32, 32).Padding(0) : button;
+    }
 }

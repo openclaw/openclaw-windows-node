@@ -54,6 +54,7 @@ public sealed partial class DashboardsPage : Page, ISettingsPageContentInset
             OpenChat = sessionKey =>
             {
                 CurrentApp.PendingChatSessionKey = sessionKey;
+                CurrentApp.PendingChatDashboardSessionKey = sessionKey;
                 ((IAppCommands)CurrentApp).Navigate("chat");
             },
             OpenConnection = () => ((IAppCommands)CurrentApp).Navigate("connection"),
@@ -151,15 +152,7 @@ public sealed partial class DashboardsPage : Page, ISettingsPageContentInset
         _state.SetConnection(client, client?.IsConnectedToGateway == true && _appState?.Status == ConnectionStatus.Connected);
     }
 
-    private IDisposable Schedule(TimeSpan delay, Action action)
-    {
-        var timer = DispatcherQueue.CreateTimer();
-        timer.Interval = delay;
-        timer.IsRepeating = false;
-        timer.Tick += (_, _) => action();
-        timer.Start();
-        return new TimerLease(timer);
-    }
+    private IDisposable Schedule(TimeSpan delay, Action action) => DispatcherQueue.Schedule(delay, action);
 
     private void Detach()
     {
@@ -179,10 +172,5 @@ public sealed partial class DashboardsPage : Page, ISettingsPageContentInset
         }
         _state = null;
         _hub = null;
-    }
-
-    private sealed class TimerLease(DispatcherQueueTimer timer) : IDisposable
-    {
-        public void Dispose() => timer.Stop();
     }
 }

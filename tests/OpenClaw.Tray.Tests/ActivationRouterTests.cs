@@ -17,6 +17,10 @@ public class ActivationRouterTests
     private static readonly TimeSpan ActivationWaitTimeout =
         int.TryParse(Environment.GetEnvironmentVariable(ActivationWaitTimeoutVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
+    // Holds the receiver's accept after the sender writes; stays well inside the sender's receive budget.
+    private static readonly TimeSpan SenderHoldObservation = TimeSpan.FromMilliseconds(200);
+    // Lets a held receiver outlast the sender quickly; the receiver is released only after the timeout.
+    private static readonly TimeSpan ShortReceiveTimeout = TimeSpan.FromMilliseconds(300);
 
     private static string UniquePipeName() =>
         DeepLinkSecurityPolicy.BuildPipeName(Guid.NewGuid().ToString("N"), "test-user", 0);
@@ -38,6 +42,68 @@ public class ActivationRouterTests
         Assert.Empty(sink.Dispatched);
         Assert.IsType<ActivationPlan.Ignore>(listener.PlanLaunch(Input(
             protocolUri: "openclaw://migration-shutdown")));
+    }
+
+    [Fact]
+    public async Task MigrationShutdown_SenderKeepsRequestUntilReceiverAcceptsIt()
+    {
+        var name = UniquePipeName();
+        var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var written = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseAccept = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var listener = new ActivationRouter(Scheme, name, () => requested.TrySetResult())
+        {
+            BeforeAcceptForTest = token => releaseAccept.Task.WaitAsync(token),
+        };
+        await using var sender = new ActivationRouter(Scheme, name)
+        {
+            AfterMigrationShutdownWrittenForTest = () => written.TrySetResult(),
+        };
+        using var timeout = new CancellationTokenSource(ActivationWaitTimeout);
+        await listener.StartForwardedActivationListenerAsync(new FakeSink(), timeout.Token);
+
+        // A client can connect before the receiver accepts. A sender that closes in that window
+        // makes the accept fail with ERROR_NO_DATA and the request is lost.
+        var send = sender.RequestMigrationShutdownAsync(timeout.Token);
+        await written.Task.WaitAsync(timeout.Token);
+        // test-timing-exception: proving the sender stays connected needs a bounded window without completion.
+        await Task.WhenAny(send, Task.Delay(SenderHoldObservation, timeout.Token));
+        Assert.False(send.IsCompleted, "The sender finished before the receiver accepted its request.");
+        releaseAccept.TrySetResult();
+
+        Assert.True(await send);
+        await requested.Task.WaitAsync(timeout.Token);
+    }
+
+    [Fact]
+    public async Task MigrationShutdown_TimedOutRequestIsWithdrawnBeforeTheReceiverAccepts()
+    {
+        var name = UniquePipeName();
+        var requested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseAccept = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var written = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var listener = new ActivationRouter(Scheme, name, () => requested.TrySetResult())
+        {
+            BeforeAcceptForTest = token => releaseAccept.Task.WaitAsync(token),
+        };
+        await using var sender = new ActivationRouter(Scheme, name)
+        {
+            MigrationShutdownReceiveTimeout = ShortReceiveTimeout,
+            AfterMigrationShutdownWrittenForTest = () => written.TrySetResult(),
+        };
+        var sink = new SignalingSink();
+        using var timeout = new CancellationTokenSource(ActivationWaitTimeout);
+        await listener.StartForwardedActivationListenerAsync(sink, timeout.Token);
+
+        Assert.False(await sender.RequestMigrationShutdownAsync(timeout.Token));
+        Assert.True(written.Task.IsCompleted, "The request timed out before it was written.");
+        releaseAccept.TrySetResult();
+
+        // The receiver handles one client at a time, so a later activation arriving first proves
+        // the timed-out request was not delivered behind the manual-close fallback.
+        Assert.True(await ForwardWithRetryAsync(sender, "openclaw://settings", timeout.Token));
+        Assert.IsType<ActivationRoute.OpenHub>(await sink.Dispatched.Task.WaitAsync(timeout.Token));
+        Assert.False(requested.Task.IsCompleted);
     }
 
     [Fact]
@@ -80,6 +146,21 @@ public class ActivationRouterTests
             Confirmations.Add(confirmation);
             return Task.FromResult(ConfirmResult);
         }
+    }
+
+    private sealed class SignalingSink : IActivationPlanSink
+    {
+        public TaskCompletionSource<ActivationRoute> Dispatched { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task DispatchAsync(ActivationRoute route, CancellationToken cancellationToken)
+        {
+            Dispatched.TrySetResult(route);
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> ConfirmAsync(ActivationConfirmation confirmation, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
     }
 
     private sealed class BlockingConfirmationSink : IActivationPlanSink
@@ -454,6 +535,39 @@ public class ActivationRouterTests
     #endregion
 
     #region Forwarded activation IPC
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ForwardedLaunch_IsDispatchedWhileStartupUpdateCheckIsPending(bool deepLink)
+    {
+        var pipeName = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, pipeName);
+        await using var forwarder = new ActivationRouter(Scheme, pipeName);
+        var sink = new SignalingSink();
+        var releaseUpdate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await listener.StartForwardedActivationListenerAsync(sink, timeout.Token);
+        var update = listener.CheckOrdinaryStartupUpdateAsync(Input(args: ["app.exe"]), () => releaseUpdate.Task);
+        try
+        {
+            Assert.False(update.IsCompleted);
+            var input = deepLink
+                ? Input(protocolUri: "openclaw://settings")
+                : Input(args: ["app.exe"]);
+            Assert.True(await forwarder.ForwardLaunchToPrimaryAsync(input, timeout.Token));
+            var route = await sink.Dispatched.Task.WaitAsync(timeout.Token);
+            var hub = Assert.IsType<ActivationRoute.OpenHub>(route);
+            Assert.Equal(deepLink ? "settings" : null, hub.Page);
+            Assert.False(update.IsCompleted);
+        }
+        finally
+        {
+            releaseUpdate.TrySetResult(true);
+            await update;
+        }
+    }
 
     [Fact]
     public async Task ForwardThenListen_DispatchesRouteFromForwardedDeepLink()

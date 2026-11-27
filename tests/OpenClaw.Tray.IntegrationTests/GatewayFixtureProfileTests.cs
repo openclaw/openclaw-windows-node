@@ -47,7 +47,7 @@ public sealed class GatewayFixtureProfileTests
         Assert.True(settings.RootElement.GetProperty("EnableMcpServer").GetBoolean());
         foreach (var disabled in new[]
         {
-            "EnableNodeMode", "AutoStart", "GlobalHotkeyEnabled", "NodeSystemRunEnabled",
+            "EnableNodeMode", "AutoStart", "GlobalHotkeyEnabled", "ShowDesktopCompanion", "NodeSystemRunEnabled",
             "NodeBrowserProxyEnabled", "NodeScreenEnabled", "NodeCameraEnabled",
             "NodeLocationEnabled", "NodeCanvasEnabled", "EnableManagedLocalGatewayAutoRepair",
             "NodeOllamaInferenceEnabled", "VoiceTtsEnabled", "UseLegacyWebChat"

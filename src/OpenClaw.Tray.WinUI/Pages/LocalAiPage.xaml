@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page x:Class="OpenClawTray.Pages.LocalAiPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:presentation="using:OpenClawTray.Presentation"
+      xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+    <Page.Resources>
+        <!-- Reserved width for a field hosted in a SettingsCard; the card wraps it below its header when narrow. -->
+        <x:Double x:Key="SettingsFieldMinWidth">240</x:Double>
+        <Thickness x:Key="SectionHeaderMargin">4,18,4,4</Thickness>
+    </Page.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <Grid HorizontalAlignment="Stretch">
-            <StackPanel Padding="24" Spacing="12" HorizontalAlignment="Stretch" MaxWidth="900">
+            <StackPanel presentation:PageContentLayout.IsEnabled="True" Spacing="4">
+            <StackPanel Spacing="4" Margin="0,0,0,8">
             <TextBlock x:Uid="LocalAiPage_Title" Text="Local AI"
                        Style="{StaticResource TitleTextBlockStyle}"
                        AutomationProperties.AutomationId="LocalAiPageMarker"/>
@@ -12,6 +20,7 @@
                        Text="Run the verified native llama-server privately on this computer. Models load only when requested."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+            </StackPanel>
 
             <TextBlock x:Name="LocalAiProfileSelectionText" TextWrapping="Wrap" Visibility="Collapsed"
                        AutomationProperties.AutomationId="LocalAiProfileSelectionText"
@@ -61,112 +70,154 @@
                             IsTabStop="False"
                             HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="LocalAiEngineCard">
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                        CornerRadius="8" Padding="16">
-                <StackPanel Spacing="10">
-                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                        <Ellipse x:Name="EngineStatusDot" Width="12" Height="12" VerticalAlignment="Center"
-                                 Fill="{ThemeResource SystemFillColorNeutralBrush}"
-                                 AutomationProperties.AccessibilityView="Raw"/>
-                        <StackPanel Grid.Column="1" Spacing="2">
-                            <TextBlock x:Uid="LocalAiPage_EngineHeading" Text="llama-server"
-                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <TextBlock x:Name="EngineStatusText" AutomationProperties.AutomationId="LocalAiEngineStatus"
-                                       TextWrapping="Wrap"
-                                       AutomationProperties.LiveSetting="Polite"/>
+                <StackPanel Spacing="4">
+                    <TextBlock x:Uid="LocalAiPage_EngineHeading" Text="llama-server"
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Margin="{StaticResource SectionHeaderMargin}"/>
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" CornerRadius="8"
+                            presentation:SettingsCardGroup.IsEnabled="True">
+                    <StackPanel>
+                    <toolkit:SettingsCard x:Name="EngineStatusCard">
+                        <toolkit:SettingsCard.Header>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse x:Name="EngineStatusDot" Width="10" Height="10" VerticalAlignment="Center"
+                                         Fill="{ThemeResource SystemFillColorNeutralBrush}"
+                                         AutomationProperties.AccessibilityView="Raw"/>
+                                <TextBlock x:Name="EngineStatusText" AutomationProperties.AutomationId="LocalAiEngineStatus"
+                                           TextWrapping="Wrap"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                                <ProgressRing x:Name="EngineBusyIndicator" Width="16" Height="16"
+                                              IsActive="False" Visibility="Collapsed"
+                                              AutomationProperties.AccessibilityView="Raw"/>
+                            </StackPanel>
+                        </toolkit:SettingsCard.Header>
+                        <toolkit:SettingsCard.Description>
                             <TextBlock x:Name="EngineOwnershipText" AutomationProperties.AutomationId="LocalAiEngineOwnership"
                                        TextWrapping="Wrap"
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </toolkit:SettingsCard.Description>
+                        <StackPanel x:Name="EngineActions" Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="StartButton" x:Uid="LocalAiPage_StartButton" Content="Start router"
+                                    Click="OnStart" AutomationProperties.AutomationId="LocalAiStart"/>
+                            <Button x:Name="StopButton" x:Uid="LocalAiPage_StopButton" Content="Stop"
+                                    Click="OnStop" AutomationProperties.AutomationId="LocalAiStop"/>
+                            <Button x:Name="RestartButton" x:Uid="LocalAiPage_RestartButton" Content="Restart"
+                                    Click="OnRestart" AutomationProperties.AutomationId="LocalAiRestart"/>
+                            <Button x:Name="OpenLogsButton" x:Uid="LocalAiPage_OpenLogsButton" Content="Open logs"
+                                    Click="OnOpenLogs" AutomationProperties.AutomationId="LocalAiOpenLogs"/>
+                            <Button x:Name="ReleaseOwnershipButton" x:Uid="LocalAiPage_ReleaseOwnershipButton"
+                                    Content="Release Gateway ownership" Visibility="Collapsed"
+                                    Click="OnReleaseOwnership" AutomationProperties.AutomationId="LocalAiReleaseOwnership"/>
                         </StackPanel>
-                        <ProgressRing x:Name="EngineBusyIndicator" Grid.Column="2" Width="20" Height="20"
-                                      IsActive="False" Visibility="Collapsed"
-                                      AutomationProperties.AccessibilityView="Raw"/>
-                    </Grid>
-                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="16" RowSpacing="6">
-                        <TextBlock x:Uid="LocalAiPage_VersionLabel" Text="Version"
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard>
+                        <toolkit:SettingsCard.Header>
+                            <TextBlock x:Uid="LocalAiPage_VersionLabel" Text="Version"/>
+                        </toolkit:SettingsCard.Header>
+                        <TextBlock x:Name="EngineVersionText" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="EngineVersionText" Grid.Column="1"/>
-                        <TextBlock x:Uid="LocalAiPage_EndpointLabel" Grid.Row="1" Text="Endpoint"
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard>
+                        <toolkit:SettingsCard.Header>
+                            <TextBlock x:Uid="LocalAiPage_EndpointLabel" Text="Endpoint"/>
+                        </toolkit:SettingsCard.Header>
+                        <TextBlock x:Name="EndpointText" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="EndpointText" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap"/>
-                        <TextBlock x:Uid="LocalAiPage_ProcessLabel" Grid.Row="2" Text="Process"
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard>
+                        <toolkit:SettingsCard.Header>
+                            <TextBlock x:Uid="LocalAiPage_ProcessLabel" Text="Process"/>
+                        </toolkit:SettingsCard.Header>
+                        <TextBlock x:Name="ProcessIdText" TextWrapping="Wrap"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        <TextBlock x:Name="ProcessIdText" Grid.Row="2" Grid.Column="1"/>
-                    </Grid>
-                    <TextBlock x:Name="EngineDetailText" TextWrapping="Wrap"
+                    </toolkit:SettingsCard>
+                    </StackPanel>
+                    </Border>
+                    <TextBlock x:Name="EngineDetailText" TextWrapping="Wrap" Margin="4,4,4,0"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <TextBlock x:Name="ActionErrorText" Visibility="Collapsed" TextWrapping="Wrap"
+                    <TextBlock x:Name="ActionErrorText" Visibility="Collapsed" TextWrapping="Wrap" Margin="4,4,4,0"
                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                AutomationProperties.AutomationId="LocalAiActionError"
                                AutomationProperties.LiveSetting="Polite"/>
-                    <TextBlock x:Name="NativeSelectionGuidanceText" Visibility="Collapsed" TextWrapping="Wrap"
+                    <TextBlock x:Name="NativeSelectionGuidanceText" Visibility="Collapsed" TextWrapping="Wrap" Margin="4,4,4,0"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                AutomationProperties.AutomationId="LocalAiNativeSelectionGuidance"
                                AutomationProperties.LiveSetting="Polite"/>
-                    <StackPanel x:Name="EngineActions" Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="StartButton" x:Uid="LocalAiPage_StartButton" Content="Start router"
-                                Click="OnStart" AutomationProperties.AutomationId="LocalAiStart"/>
-                        <Button x:Name="StopButton" x:Uid="LocalAiPage_StopButton" Content="Stop"
-                                Click="OnStop" AutomationProperties.AutomationId="LocalAiStop"/>
-                        <Button x:Name="RestartButton" x:Uid="LocalAiPage_RestartButton" Content="Restart"
-                                Click="OnRestart" AutomationProperties.AutomationId="LocalAiRestart"/>
-                        <Button x:Name="OpenLogsButton" x:Uid="LocalAiPage_OpenLogsButton" Content="Open logs"
-                                Click="OnOpenLogs" AutomationProperties.AutomationId="LocalAiOpenLogs"/>
-                    </StackPanel>
-                    <Button x:Name="ReleaseOwnershipButton" x:Uid="LocalAiPage_ReleaseOwnershipButton"
-                            Content="Release Gateway ownership" Visibility="Collapsed"
-                            Click="OnReleaseOwnership" AutomationProperties.AutomationId="LocalAiReleaseOwnership"/>
                 </StackPanel>
-                </Border>
             </ContentControl>
 
             <ContentControl x:Name="LocalAiModelOption"
                             IsTabStop="False"
                             HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="LocalAiModelCard">
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                        CornerRadius="8" Padding="16">
-                <StackPanel Spacing="10">
+                <StackPanel Spacing="4">
                     <TextBlock x:Uid="LocalAiPage_ModelHeading" Text="Model"
-                               Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                        <Ellipse x:Name="ModelStatusDot" Width="12" Height="12" VerticalAlignment="Center"
-                                 Fill="{ThemeResource SystemFillColorNeutralBrush}"
-                                 AutomationProperties.AccessibilityView="Raw"/>
-                        <TextBlock Grid.Column="1" x:Name="ModelStatusText" AutomationProperties.AutomationId="LocalAiModelStatus"
-                                   TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite"/>
-                    </Grid>
-                    <TextBlock x:Name="ModelNameText" AutomationProperties.AutomationId="LocalAiModelName"
-                               TextWrapping="Wrap"/>
-                    <TextBlock x:Name="ModelRecipeText"
-                               TextWrapping="Wrap"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <Button x:Name="RetrySetupButton" x:Uid="LocalAiPage_RetrySetupButton"
-                            Content="Retry setup or download" Click="OnRetrySetup" HorizontalAlignment="Left"
-                            AutomationProperties.AutomationId="LocalAiRetrySetup"/>
-                    <StackPanel x:Name="ChangeModelPanel" Spacing="8" Visibility="Collapsed">
-                        <ComboBox x:Name="LocalAiModelSelector" x:Uid="LocalAiPage_ModelSelector"
-                                  Header="Model" MaxWidth="320" HorizontalAlignment="Left"
-                                  SelectionChanged="OnModelSelectionChanged"
-                                  AutomationProperties.AutomationId="LocalAiModelSelector"/>
-                        <TextBox x:Name="LocalAiCustomModelBox" x:Uid="LocalAiPage_CustomModelBox"
-                                 Header="Custom Hugging Face model (optional)"
-                                 PlaceholderText="owner/repo, owner/repo:Q4_K_M, or a huggingface.co link"
-                                 MaxWidth="560" HorizontalAlignment="Left"
-                                 TextChanged="OnCustomModelChanged"
-                                 AutomationProperties.AutomationId="LocalAiCustomModel"/>
-                        <TextBlock x:Uid="LocalAiPage_CustomModelHint"
-                                   Text="Public, single-file GGUF models only. When this is filled in, it is used instead of the selection above."
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Margin="{StaticResource SectionHeaderMargin}"/>
+                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" CornerRadius="8"
+                            presentation:SettingsCardGroup.IsEnabled="True">
+                    <StackPanel>
+                    <toolkit:SettingsCard x:Name="ModelStatusCard">
+                        <toolkit:SettingsCard.Header>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse x:Name="ModelStatusDot" Width="10" Height="10" VerticalAlignment="Center"
+                                         Fill="{ThemeResource SystemFillColorNeutralBrush}"
+                                         AutomationProperties.AccessibilityView="Raw"/>
+                                <TextBlock x:Name="ModelStatusText" AutomationProperties.AutomationId="LocalAiModelStatus"
+                                           TextWrapping="Wrap"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </toolkit:SettingsCard.Header>
+                        <toolkit:SettingsCard.Description>
+                            <StackPanel Spacing="2">
+                                <TextBlock x:Name="ModelNameText" AutomationProperties.AutomationId="LocalAiModelName"
+                                           TextWrapping="Wrap"/>
+                                <TextBlock x:Name="ModelRecipeText"
+                                           TextWrapping="Wrap"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                        </toolkit:SettingsCard.Description>
+                        <Button x:Name="RetrySetupButton" x:Uid="LocalAiPage_RetrySetupButton"
+                                Content="Retry setup or download" Click="OnRetrySetup"
+                                AutomationProperties.AutomationId="LocalAiRetrySetup"/>
+                    </toolkit:SettingsCard>
+                    <StackPanel x:Name="ChangeModelPanel" Visibility="Collapsed">
+                        <toolkit:SettingsCard x:Name="LocalAiModelSelectorCard" x:Uid="LocalAiPage_ModelSelector"
+                                              Header="Model">
+                            <ComboBox x:Name="LocalAiModelSelector"
+                                      MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="360" HorizontalAlignment="Left"
+                                      SelectionChanged="OnModelSelectionChanged"
+                                      AutomationProperties.AutomationId="LocalAiModelSelector"
+                                      AutomationProperties.Name="{Binding Header, ElementName=LocalAiModelSelectorCard}"/>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard x:Name="LocalAiCustomModelCard" x:Uid="LocalAiPage_CustomModelBox"
+                                              Header="Custom Hugging Face model (optional)">
+                            <toolkit:SettingsCard.Description>
+                                <TextBlock x:Uid="LocalAiPage_CustomModelHint"
+                                           Text="Public, single-file GGUF models only. When this is filled in, it is used instead of the selection above."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
+                            </toolkit:SettingsCard.Description>
+                            <TextBox x:Name="LocalAiCustomModelBox" x:Uid="LocalAiPage_CustomModelBoxField"
+                                     PlaceholderText="owner/repo, owner/repo:Q4_K_M, or a huggingface.co link"
+                                     MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="400" HorizontalAlignment="Left"
+                                     TextChanged="OnCustomModelChanged"
+                                     AutomationProperties.AutomationId="LocalAiCustomModel"
+                                     AutomationProperties.Name="{Binding Header, ElementName=LocalAiCustomModelCard}"/>
+                        </toolkit:SettingsCard>
+                    </StackPanel>
+                    </StackPanel>
+                    </Border>
+                    <StackPanel x:Name="ChangeModelExtras" Spacing="4" Visibility="Collapsed">
                         <InfoBar x:Name="LocalAiFitWarning" x:Uid="LocalAiPage_FitWarning"
                                  Title="This model may not fit" Severity="Warning"
                                  IsOpen="False" IsClosable="False"
@@ -177,17 +228,17 @@
                                         AutomationProperties.AutomationId="LocalAiForceApplyModel"/>
                             </InfoBar.ActionButton>
                         </InfoBar>
-                        <StackPanel x:Name="ModelSwitchProgressPanel" Spacing="4" Visibility="Collapsed">
+                        <StackPanel x:Name="ModelSwitchProgressPanel" Spacing="4" Visibility="Collapsed" Margin="4,4,4,0">
                             <TextBlock x:Name="ModelSwitchProgressText" TextWrapping="Wrap"
                                        AutomationProperties.AutomationId="LocalAiModelSwitchProgress"
                                        AutomationProperties.LiveSetting="Polite"/>
                             <ProgressBar x:Name="ModelSwitchProgressBar" Maximum="1"
                                          AutomationProperties.AccessibilityView="Raw"/>
                         </StackPanel>
-                        <TextBlock x:Name="ModelSwitchStatusText" TextWrapping="Wrap" Visibility="Collapsed"
+                        <TextBlock x:Name="ModelSwitchStatusText" TextWrapping="Wrap" Visibility="Collapsed" Margin="4,4,4,0"
                                    AutomationProperties.AutomationId="LocalAiModelSwitchStatus"
                                    AutomationProperties.LiveSetting="Polite"/>
-                        <StackPanel x:Name="ModelActions" Orientation="Horizontal" Spacing="8">
+                        <StackPanel x:Name="ModelActions" Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
                             <Button x:Name="ApplyModelButton" x:Uid="LocalAiPage_ApplyModelButton"
                                     Content="Switch model" Style="{StaticResource AccentButtonStyle}"
                                     Click="OnApplyModel"
@@ -198,40 +249,42 @@
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
-                </Border>
             </ContentControl>
 
             <ContentControl x:Name="LocalAiGatewayOption"
                             IsTabStop="False"
                             HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="LocalAiGatewayCard">
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                        CornerRadius="8" Padding="16">
-                <StackPanel Spacing="10">
+                <StackPanel Spacing="4">
                     <TextBlock x:Uid="LocalAiPage_GatewayHeading" Text="Gateway connection"
-                               Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                        <Ellipse x:Name="GatewayStatusDot" Width="12" Height="12" VerticalAlignment="Center"
-                                 Fill="{ThemeResource SystemFillColorNeutralBrush}"
-                                 AutomationProperties.AccessibilityView="Raw"/>
-                        <TextBlock Grid.Column="1" x:Name="GatewayStatusText" AutomationProperties.AutomationId="LocalAiGatewayStatus"
-                                   TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Polite"/>
-                    </Grid>
-                    <TextBlock x:Name="GatewayDetailText" TextWrapping="Wrap"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    <StackPanel x:Name="GatewayActions" Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="RepairConnectionButton" x:Uid="LocalAiPage_RepairConnectionButton"
-                                Content="Repair connection" Click="OnRepairConnection"
-                                AutomationProperties.AutomationId="LocalAiRepairConnection"/>
-                        <Button x:Name="OpenChatButton" x:Uid="LocalAiPage_OpenChatButton"
-                                Content="Open chat" Click="OnOpenChat"
-                                AutomationProperties.AutomationId="LocalAiOpenChat"/>
-                    </StackPanel>
+                               Style="{StaticResource BodyStrongTextBlockStyle}"
+                               Margin="{StaticResource SectionHeaderMargin}"/>
+                    <toolkit:SettingsCard x:Name="GatewayStatusCard">
+                        <toolkit:SettingsCard.Header>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Ellipse x:Name="GatewayStatusDot" Width="10" Height="10" VerticalAlignment="Center"
+                                         Fill="{ThemeResource SystemFillColorNeutralBrush}"
+                                         AutomationProperties.AccessibilityView="Raw"/>
+                                <TextBlock x:Name="GatewayStatusText" AutomationProperties.AutomationId="LocalAiGatewayStatus"
+                                           TextWrapping="Wrap"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </toolkit:SettingsCard.Header>
+                        <toolkit:SettingsCard.Description>
+                            <TextBlock x:Name="GatewayDetailText" TextWrapping="Wrap"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        </toolkit:SettingsCard.Description>
+                        <StackPanel x:Name="GatewayActions" Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="RepairConnectionButton" x:Uid="LocalAiPage_RepairConnectionButton"
+                                    Content="Repair connection" Click="OnRepairConnection"
+                                    AutomationProperties.AutomationId="LocalAiRepairConnection"/>
+                            <Button x:Name="OpenChatButton" x:Uid="LocalAiPage_OpenChatButton"
+                                    Content="Open chat" Click="OnOpenChat"
+                                    AutomationProperties.AutomationId="LocalAiOpenChat"/>
+                        </StackPanel>
+                    </toolkit:SettingsCard>
                 </StackPanel>
-                </Border>
             </ContentControl>
             </StackPanel>
         </Grid>

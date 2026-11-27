@@ -103,7 +103,10 @@ internal sealed class GatewayChatStreamProjection
         _messages[key] = new(message, size, ++_sequence);
         var projected = JsonNode.Parse(root.GetRawText())!.AsObject();
         projected["payload"]!["message"] = message.DeepClone();
-        if (payload.TryGetProperty("message", out _))
+        var emptyReplacement = payload.TryGetProperty("replace", out var replaceFlag) &&
+            replaceFlag.ValueKind == JsonValueKind.True &&
+            ReadString(payload, "deltaText") is { Length: 0 };
+        if (payload.TryGetProperty("message", out _) && !emptyReplacement)
             projected["payload"]!.AsObject().Remove("replace");
         return JsonSerializer.SerializeToElement(projected);
     }

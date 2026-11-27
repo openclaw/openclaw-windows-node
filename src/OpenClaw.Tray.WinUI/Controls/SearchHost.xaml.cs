@@ -38,6 +38,7 @@ public sealed partial class SearchHost : UserControl
 {
     internal static Style CreatePresenterStyle() => new(typeof(FlyoutPresenter))
     {
+        BasedOn = Application.Current.Resources.TryGetValue("ThemedFlyoutPresenterStyle", out var themed) ? themed as Style : null,
         Setters = { new Setter(MaxWidthProperty, double.PositiveInfinity) }
     };
 

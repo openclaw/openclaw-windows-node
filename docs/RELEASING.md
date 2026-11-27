@@ -422,6 +422,21 @@ migration proof.
 
 ## Promote a published alpha to stable
 
+Every Tuesday at **18:00 UTC** (10 AM Pacific standard time, 11 AM Pacific
+daylight time), **Actions > Weekly stable promotion** selects the most recently
+published, non-draft canonical alpha release and dispatches **Promote alpha to
+stable** on main with `prepare=true`. It skips when no alpha exists or that
+alpha's version line is already stable.
+Selection uses publication time, not GitHub's stable-only Latest marker. If the
+selected alpha fails the existing eligibility checks, the run fails rather than
+silently selecting an older alpha.
+
+The scheduler only requests preparation. The request uses the same serialized
+promotion workflow, source/CI validation, rebuild, signing, and **stable-release**
+release-manager approval as manual preparation. It never approves publication. A pending approval is not cancelled
+by the next scheduled run. Store publication remains a separate central
+approval described in [Microsoft Store publication](MICROSOFT_STORE.md).
+
 Use **Actions > Promote alpha to stable**, on **main**, to select a published
 `vX.Y.Z-alpha.N` candidate. This is an additional supported release path: it
 promotes an approved ancestor of main instead of including every newer commit.
@@ -511,6 +526,11 @@ Record links to the required acceptance evidence in the environment review.
 For `v2026.9.5`, this includes the coordinated migration proof above on exact
 signed x64 and ARM64 packages. A Store listing or a green CI badge is not that
 proof. Do not approve a run with missing acceptance.
+
+Publication explicitly checks `!cancelled()` and successful release preparation
+so an intentionally skipped ancestor, such as the pull-request-only test soak,
+does not suppress the approval job through GitHub's implicit `success()` check.
+Failed preparation and cancelled runs still cannot publish.
 
 Promotion publication uses only `GITHUB_TOKEN` with **Contents: write**. No PAT,
 GitHub App key, or separate release-token secret is required by the workflow.
@@ -644,6 +664,11 @@ and set `OpenClawSignedFileWorkerPath` to the matching RID directory.
 Companion embeds its manifest. Ordinary non-release builds still publish a
 local unsigned worker.
 
+Manifest generation explicitly launches PowerShell 7 (`pwsh` on the build
+host's `PATH`), matching the signing job and cleanup-helper checks. It does
+not launch Windows PowerShell 5.1 with inherited PowerShell 7 module paths,
+which can prevent the Authenticode module from loading.
+
 Do not sign or republish the worker after manifest generation: either changes
 the bytes checked by Companion's embedded digests. Final release signing covers
 the app binaries separately and verifies the already-signed worker in its
@@ -755,11 +780,13 @@ extract the matching architecture archive and follow its instructions,
 including explicitly trusting the included public certificate.
 
 Unsigned Store submission packages, the multi-architecture bundle, and their
-metadata remain Actions artifacts only. Use [Store submission](MICROSOFT_STORE.md)
-to upload the validated unsigned bundle from a successful release run. No
-production signing step is applied to those Store inputs.
+metadata remain Actions artifacts only. Use [Store publication requests](MICROSOFT_STORE.md)
+to request release-manager-approved central publication of the validated unsigned
+bundle from a successful release run. No production signing step is applied to
+those Store inputs.
 
-Automatic Partner Center submission is staged behind `MSSTORE_ENABLED`.
+Automatic central publication requests are staged behind `MSSTORE_ENABLED`.
+The variable never bypasses central release-manager approval.
 Store-signed retrieval and publication, and official lifecycle acceptance
 remain release gates tracked in #1375. Submission automation and release
 artifacts do not clear those rollout gates.
@@ -1008,8 +1035,9 @@ Signing on those allowlists. Because these are NTFS hardlinks, signing the
 staged file signs the real payload file.
 
 After signing, CI verifies the actual payload directory, not the staging folder.
-If hardlink signing does not affect the payload, the verifier fails before
-release artifacts are created.
+The verifier checks the OpenClaw signature on first-party binaries and the
+Microsoft signature on the bundled Reactor assemblies before creating release
+artifacts.
 
 ## Expected release workflow jobs
 
@@ -1111,6 +1139,12 @@ only receive a stable tag through the controlled promotion workflow above.
 - CI computes GitVersion outputs for artifact naming, while product builds use
   GitVersion-backed assembly metadata.
 
-## Automated Store submission
+## Central Store publication
 
-See [Microsoft Store submission](MICROSOFT_STORE.md) for protected OIDC setup, manual submission from an existing release run, automatic activation, and recovery. Automatic submission remains off until the repository variable `MSSTORE_ENABLED` is `true`; the existing release and artifact handoffs are unchanged.
+See [Store publication requests](MICROSOFT_STORE.md) for the central publishing
+boundary, required administrator cutover, manual requests from existing release
+runs, automatic request activation, and recovery. This repository only sends
+requests to `openclaw/releases`; it does not hold Store publishing authority.
+Automatic requests remain off until the repository variable `MSSTORE_ENABLED`
+is `true`. The stable-promotion approval, MSIX version reservations, unsigned
+x64/ARM64 artifacts, and release witness remain unchanged.

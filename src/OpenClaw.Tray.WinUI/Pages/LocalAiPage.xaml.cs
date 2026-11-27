@@ -167,6 +167,7 @@ public sealed partial class LocalAiPage : Page
         RetrySetupButton.IsEnabled = _viewModel.CanRetrySetup;
         RetrySetupButton.Visibility = _viewModel.CanRetrySetup ? Visibility.Visible : Visibility.Collapsed;
         ChangeModelPanel.Visibility = _viewModel.HasInstalledModel ? Visibility.Visible : Visibility.Collapsed;
+        ChangeModelExtras.Visibility = ChangeModelPanel.Visibility;
         RefreshModelSelection(_viewModel);
         RepairConnectionButton.IsEnabled = _viewModel.CanRepairConnection;
         OpenChatButton.IsEnabled = _viewModel.CanOpenChat;

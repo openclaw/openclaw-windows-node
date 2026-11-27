@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using OpenClaw.TestSupport;
 
 namespace OpenClaw.Tray.Tests;
@@ -19,9 +20,28 @@ public sealed class FileWorkerManifestTests
         File.WriteAllBytes(directory.Combine("OpenClaw.FileWorker.dll"), Image());
         File.WriteAllBytes(directory.Combine("coreclr.dll"), Image());
         File.WriteAllText(directory.Combine("OpenClaw.FileWorker.runtimeconfig.json"), "{}");
-        var (exitCode, diagnostics) = await RunManifest(directory.Path, rid, requireSigned: true);
+        var project = directory.Combine("release worker.proj");
+        var targets = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "FileWorker.Build.targets");
+        new XDocument(new XElement("Project",
+            new XElement("PropertyGroup",
+                new XElement("RuntimeIdentifier", rid),
+                new XElement("OpenClawSignedFileWorkerPath", directory.Path),
+                new XElement("RequireSignedFileWorker", "true"),
+                new XElement("Version", "fixture")),
+            new XElement("Import", new XAttribute("Project", targets)))).Save(project);
+        var start = new ProcessStartInfo("pwsh")
+        {
+            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true
+        };
+        foreach (var argument in new[]
+        {
+            "-NoProfile", "-NonInteractive", "-Command",
+            $"& dotnet msbuild '{project.Replace("'", "''")}' -nologo -verbosity:minimal -target:BuildFixedFileWorker; exit $LASTEXITCODE"
+        }) start.ArgumentList.Add(argument);
+        var (exitCode, diagnostics) = await RunProcess(start);
         Assert.NotEqual(0, exitCode);
-        Assert.Contains("before manifest generation", diagnostics);
+        Assert.True(diagnostics.Contains("before manifest generation", StringComparison.Ordinal), diagnostics);
         Assert.False(File.Exists(directory.Combine("payload-manifest.json")));
     }
 
@@ -87,9 +107,9 @@ public sealed class FileWorkerManifestTests
         Assert.False(File.Exists(directory.Combine("OpenClaw.FileWorker.pdb")));
     }
 
-    private static async Task<(int ExitCode, string Diagnostics)> RunManifest(string directory, string rid, bool requireSigned = false)
+    private static async Task<(int ExitCode, string Diagnostics)> RunManifest(string directory, string rid)
     {
-        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+        var start = new ProcessStartInfo("pwsh")
         {
             UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true
         };
@@ -99,8 +119,11 @@ public sealed class FileWorkerManifestTests
             Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "scripts", "Write-FileWorkerManifest.ps1"),
             "-PayloadDirectory", directory, "-RuntimeIdentifier", rid, "-ProductVersion", "fixture"
         }) start.ArgumentList.Add(argument);
-        if (requireSigned) start.ArgumentList.Add("-RequireSignedWorker");
-        start.Environment.Remove("PSModulePath");
+        return await RunProcess(start);
+    }
+
+    private static async Task<(int ExitCode, string Diagnostics)> RunProcess(ProcessStartInfo start)
+    {
         using var process = Process.Start(start)!;
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();

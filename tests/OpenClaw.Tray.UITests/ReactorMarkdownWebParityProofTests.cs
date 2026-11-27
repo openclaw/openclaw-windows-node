@@ -157,12 +157,26 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
                 // Switching theme re-resolves the syntax palette.
                 host.RequestedTheme = dark ? ElementTheme.Light : ElementTheme.Dark;
             });
-            await ui.YieldToRenderAsync();
+            // ActualTheme flips synchronously, but the code block re-resolves its palette from
+            // ActualThemeChanged, which WinUI raises later. Wait for the switched palette.
+            var switchedToDark = !dark;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => SwitchedCode() is { } code && SyntaxPalette.All(entry =>
+                    TryInk(code, entry.Token) == (switchedToDark ? entry.Dark : entry.Light)),
+                "syntax palette re-resolved for the switched theme",
+                () => SwitchedCode() is { } code
+                    ? $"ActualTheme: {code.ActualTheme}; " + string.Join(", ", SyntaxPalette.Select(entry =>
+                        $"{entry.Token}={TryInk(code, entry.Token)?.ToString("X8") ?? "none"}"))
+                    : "code block absent"));
             await ui.RunOnUIAsync(() =>
             {
                 var code = Assert.Single(FindDescendants<RichTextBlock>(root!), text => Text(text) == TypeScript);
-                Assert.Equal(dark ? 0xFFB81B27u : 0xFFFF8A80u, Ink(code, "type"));
+                Assert.All(SyntaxPalette, entry =>
+                    Assert.Equal(switchedToDark ? entry.Dark : entry.Light, Ink(code, entry.Token)));
             });
+
+            RichTextBlock? SwitchedCode() =>
+                FindDescendants<RichTextBlock>(root!).SingleOrDefault(text => Text(text) == TypeScript);
 
             // A High Contrast transition (which need not change ActualTheme) drops and then
             // restores syntax, bold and inline-code highlighters on mounted Markdown.
@@ -214,16 +228,156 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
         }
     }
 
-    // Styling passes run at Low dispatcher priority, so poll from off the UI thread.
+    [Fact]
+    public async Task InlineCodeChip_FollowsTheChatThemeRatherThanTheApplicationTheme()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            const string sample = "Run `openclaw status` to check the connection.";
+            const string code = "openclaw status";
+            const int codeStart = 4;
+            var appTheme = Application.Current.RequestedTheme;
+            var chatTheme = appTheme == ApplicationTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+            using var theme = new ChatThemeProofScope(chatTheme.ToString());
+            using var host = new ReactorHostControl();
+            var root = host.Reconciler.Mount(ReactorChatTimeline.BuildSafeMarkdown(sample), static () => { });
+            Assert.NotNull(root);
+            host.Content = root;
+            var surface = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+                """
+                <Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                        Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+                        HorizontalAlignment="Left" VerticalAlignment="Top" Width="360" Padding="16">
+                    <Border.Resources>
+                        <SolidColorBrush xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                                         x:Key="ChipReference" Color="{ThemeResource ControlFillColorSecondary}" />
+                    </Border.Resources>
+                </Border>
+                """);
+            surface.RequestedTheme = chatTheme;
+            surface.Child = host;
+            ui.Container.Children.Add(surface);
+            try
+            {
+                RichTextBlock? text = null;
+                SolidColorBrush? chip = null;
+                var reference = Assert.IsType<SolidColorBrush>(surface.Resources["ChipReference"]);
+                // ActualTheme can flip before the queued inline styling pass replaces the chip.
+                await WaitForRenderedConditionAsync(
+                    () =>
+                    {
+                        text = FindDescendants<RichTextBlock>(root).SingleOrDefault();
+                        chip = text?.TextHighlighters.SingleOrDefault(highlighter =>
+                            highlighter.Ranges.Any(range =>
+                                range.StartIndex == codeStart && range.Length == code.Length))
+                            ?.Background as SolidColorBrush;
+                        return text is { IsLoaded: true, ActualWidth: > 0 } && text.ActualTheme == chatTheme &&
+                            chip?.Color == reference.Color;
+                    },
+                    $"inline code painted in {chatTheme} with the application in {appTheme}",
+                    () => $"ActualTheme: {text?.ActualTheme}; expected: {reference.Color}; actual: {chip?.Color}.");
+                await VisualTestCapture.CaptureAsync(surface, $"InlineCode-App{appTheme}-Chat{chatTheme}");
+                Assert.Equal(reference.Color, chip!.Color);
+            }
+            finally
+            {
+                ui.Container.Children.Remove(surface);
+                surface.Child = null;
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ListMarker_RestylesWhenItsRowUpdatesInPlace()
+    {
+        await ui.ResetContainerAsync();
+        ReactorHostControl? host = null;
+        UIElement? root = null;
+        Microsoft.UI.Reactor.Core.Element? element = null;
+        TextBlock? marker = null;
+        TextBlock? Marker() => FindDescendants<TextBlock>(root!).FirstOrDefault(text =>
+            text.Text.StartsWith('\u2022') || text.Text.StartsWith('1'));
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                host = new ReactorHostControl { Width = 480 };
+                element = ReactorChatTimeline.BuildSafeMarkdown("- First item");
+                root = host.Reconciler.Mount(element, static () => { });
+                host.Content = root;
+                ui.Container.Children.Add(host);
+            });
+            Assert.True(await PollAsync(() => Marker() is { } bullet && bullet.Text.StartsWith('\u2022')
+                && ReferenceEquals(bullet.Style, Application.Current.Resources["ChatMutedTextStyle"])),
+                "bullet marker takes the muted marker style");
+            await ui.RunOnUIAsync(() =>
+            {
+                marker = Marker();
+                var next = ReactorChatTimeline.BuildSafeMarkdown("1. First item");
+                host!.Reconciler.Reconcile(element, next, root, static () => { });
+                element = next;
+            });
+            // The same row and marker are updated in place, so Loaded does not run again.
+            Assert.True(await PollAsync(() => ReferenceEquals(Marker(), marker) && marker!.Text.StartsWith('1')
+                && ReferenceEquals(marker.Style, Application.Current.Resources["ChatSecondaryTextStyle"])),
+                "a marker changed in place takes the numbered marker style");
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(TextAlignment.Right, marker!.TextAlignment);
+                Assert.Equal(ChatVisuals.ListMarkerColumn, marker.MinWidth);
+                Assert.Equal(ChatVisuals.BodyFontFamily, marker.FontFamily.Source);
+            });
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                if (host is not null)
+                {
+                    ui.Container.Children.Remove(host);
+                    host.Content = null;
+                    host.Dispose();
+                }
+            });
+        }
+    }
+
+    // Styling passes run at Low dispatcher priority, so poll from off the UI thread. The budget is
+    // the shared render-wait timeout so a loaded runner can extend it.
     private async Task<bool> PollAsync(Func<bool> condition)
     {
-        for (var attempt = 0; attempt < 100; attempt++)
+        var deadline = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
         {
             if (await ui.RunOnUIAsync(() => Task.FromResult(condition())))
                 return true;
+            if (deadline.Elapsed >= TestSupport.RenderedConditionTimeout)
+                return false;
             await Task.Delay(50);
         }
-        return false;
+    }
+
+    // The web palette for each highlighted token in the TypeScript sample.
+    private static readonly (string Token, uint Dark, uint Light)[] SyntaxPalette =
+    [
+        ("type", 0xFFFF8A80u, 0xFFB81B27u),
+        ("SharedFolder", 0xFFD2A8FFu, 0xFF7040D0u),
+        ("path", 0xFF7EE787u, 0xFF116329u),
+        ("string", 0xFFFFA657u, 0xFF953800u),
+        ("\"read\"", 0xFFA5D6FFu, 0xFF0A3069u),
+    ];
+
+    // Like Ink, but returns null instead of failing so a rendered-condition wait can poll it.
+    private static uint? TryInk(RichTextBlock code, string token)
+    {
+        var start = TypeScript.IndexOf(token, StringComparison.Ordinal);
+        var matches = code.TextHighlighters.Where(highlighter =>
+            highlighter.Ranges.Any(range => range.StartIndex == start && range.Length == token.Length)).ToArray();
+        return matches is [{ Foreground: SolidColorBrush { Color: var color } }]
+            ? (uint)color.A << 24 | (uint)color.R << 16 | (uint)color.G << 8 | color.B
+            : null;
     }
 
     // ARGB of the syntax highlighter that colors exactly this token's first occurrence.

@@ -81,6 +81,35 @@ tests supply its only alternate implementation. Existing test assembly
 visibility and ledger-recorded seams remain governed by their real contracts
 and retirement conditions.
 
+## Timing and determinism checklist
+
+For native UI, loopback, process, and fixture tests, check each item against the
+[timing rules](../../../docs/TEST_COVERAGE.md#deterministic-native-and-timing-sensitive-tests):
+
+- Readiness waits on an observable condition, not a delay, sleep, or fixed
+  settle count.
+- UI Automation elements are acquired inside the wait and used from that
+  capture, not looked up once with `!` or a throwing helper.
+- Geometry is asserted only after bounds stop moving, with an explicit
+  tolerance.
+- A polling predicate keeps polling while ownership is unproven and fails
+  fast only on positive foreign evidence.
+- Fixture data sets every value the assertion depends on; ports and other
+  inputs are deterministic.
+- Hang guards are named, environment-overridable constants with headroom for
+  a loaded runner. Latency-bounded work uses a dedicated thread, not the shared
+  thread pool.
+- A surviving flake is investigated as a possible product race before the
+  wait is changed.
+
+The `TestTimingPatternGuard` ratchet rejects new literal short hang guards,
+fixed delays, and one-shot UI Automation lookups. Do not raise its baseline to
+admit new code; use the named helper or a justified
+`// test-timing-exception: <reason>` comment. A rename or move may carry an
+existing baseline entry to the new file when the rule totals stay unchanged.
+When a change removes occurrences, lower the baseline in the same change with
+`.\scripts\validate-test-timing-patterns.ps1 -LowerBaseline`.
+
 ## Preserve valuable contracts
 
 - Keep independent protocol, CLI, storage, migration, defaults, packaging,

@@ -524,10 +524,10 @@ public sealed class A2UISvgTests
     [Fact]
     public async Task Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees()
     {
-        // Two-stage case: queue wait (all slots busy for a known hold) then one trivial decode.
-        // The single-decode tests above must never absorb queue wait; this one covers it explicitly.
+        // Causal, not wall-clock: the load parks on the decode semaphore while every slot is held, takes the
+        // single slot this test frees, decodes, and returns that slot. The single-decode tests above must never
+        // absorb queue wait; this one covers it explicitly.
         var slots = DecodeSlots();
-        var hold = TimeSpan.FromMilliseconds(500);
         var held = 0;
         void ReleaseHeld()
         {
@@ -538,31 +538,39 @@ public sealed class A2UISvgTests
         try
         {
             while (slots.Wait(0)) held++;
-            Assert.True(held > 0, "no free SVG decode slot to hold");
+            // A slot still owned by earlier work would later be handed to this load and break the hand-off proof.
+            Assert.True(held == MediaResolver.SvgDecodeConcurrency,
+                $"SVG decode slots were busy at test start ({held} of {MediaResolver.SvgDecodeConcurrency} free)");
 
             await _ui.RunOnUIAsync(async () =>
             {
                 var logger = new RecordingLogger();
                 var media = NewResolver(logger);
-                long releasedAt = 0;
-                var sw = Stopwatch.StartNew();
-                var releaser = Task.Run(async () =>
+                string Warnings() => $"resolver warnings: [{string.Join(" | ", logger.Warnings)}]";
+
+                // A data: SVG reaches the decode semaphore synchronously, so the load is queued when this returns.
+                var load = media.LoadImageAsync(DataSvgUtf8(MinSvg));
+                Assert.False(load.IsCompleted, $"load completed while every decode slot was held. {Warnings()}");
+
+                // SemaphoreSlim hands a released slot directly to a queued waiter, so the count stays at zero
+                // only if the load is parked on the decode queue.
+                Interlocked.Decrement(ref held);
+                slots.Release();
+                Assert.True(slots.CurrentCount == 0,
+                    $"the freed decode slot was not handed to a queued load (CurrentCount={slots.CurrentCount}). {Warnings()}");
+
+                ImageSource? src;
+                try { src = await load.WaitAsync(SingleDecodeBound); }
+                catch (TimeoutException)
                 {
-                    await Task.Delay(hold);
-                    Volatile.Write(ref releasedAt, Stopwatch.GetTimestamp());
-                    ReleaseHeld();
-                });
-
-                var src = await media.LoadImageAsync(DataSvgUtf8(MinSvg));
-                var completedAt = Stopwatch.GetTimestamp();
-                sw.Stop();
-                await releaser;
-
-                Assert.True(src is SvgImageSource, $"queued load did not decode; resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
-                Assert.True(completedAt >= Volatile.Read(ref releasedAt),
-                    "load completed before any decode slot was released, so it was not queued");
-                Assert.True(sw.Elapsed < hold + SvgDecodeSlack,
-                    $"queue wait {hold} plus a trivial decode took {sw.Elapsed} (>{hold + SvgDecodeSlack})");
+                    Assert.Fail($"queued load did not finish within {SingleDecodeBound} after a slot freed " +
+                        $"(set {SvgDecodeSlackVariable} to widen); CurrentCount={slots.CurrentCount}. {Warnings()}");
+                    throw;
+                }
+                Assert.True(src is SvgImageSource, $"queued load did not decode once a slot freed. {Warnings()}");
+                Assert.Empty(logger.Warnings);
+                Assert.True(slots.CurrentCount == 1,
+                    $"the completed load did not return its decode slot (CurrentCount={slots.CurrentCount}).");
             });
         }
         finally

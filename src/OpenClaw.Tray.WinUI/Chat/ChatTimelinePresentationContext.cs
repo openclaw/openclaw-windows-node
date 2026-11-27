@@ -40,10 +40,18 @@ public sealed record ChatTimelinePresentationContext(
     Func<ChatToolOutputRequest, CancellationToken, Task<ChatToolOutputResult>>? LoadToolOutputAsync = null,
     ChatToolDetailsProfileState ToolDetailsProfileState = default,
     Func<ChatToolDetailsProfileState>? ReadToolDetailsProfileState = null,
-    IReadOnlyList<ChatThread>? ChildThreads = null,
-    SessionProviderReviewInfo? ProviderReview = null,
     bool LoadingOlderHistory = false,
     ChatToolActivityExpansionState? ToolExpansionState = null,
     string UserDisplayName = "",
     Microsoft.UI.Xaml.Media.ImageSource? UserProfilePicture = null,
-    Action<ChatToolDetailRequest>? OnOpenToolDetails = null);
+    Action<ChatToolDetailRequest>? OnOpenToolDetails = null,
+    IReadOnlyList<ChatThread>? ChildThreads = null,
+    // Tool row links: the workspace file a row names, and the subagent session a launch started.
+    Action<string>? OnOpenWorkspaceFile = null,
+    Func<string, bool>? CanOpenSession = null,
+    Action<string>? OnOpenSession = null,
+    Action<ChatAssistantMediaPresentation>? OnOpenAssistantFile = null,
+    // The saved reasoning row the current thought is still writing, if any.
+    string? ActiveReasoningId = null,
+    // Provider-lifetime learned-skill Undo state; null hides Undo.
+    ChatSkillUndoTracker? SkillUndo = null);

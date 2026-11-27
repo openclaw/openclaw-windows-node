@@ -2,12 +2,14 @@ using Microsoft.UI;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hosting;
+using Microsoft.UI.Reactor.Hooks;
 using Microsoft.UI.Reactor.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Themes;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -27,12 +29,19 @@ public sealed record OpenClawReactorChatRootProps(
     string? InitialThreadId = null,
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
-    Action<string>? OnOpenCheckpoints = null,
     Func<string, bool>? TryCopyText = null,
     bool InitialThreadIsExplicitSelection = true,
     IChatAgentRosterSource? AgentRosterSource = null,
     string UserDisplayName = "",
-    ImageSource? UserProfilePicture = null);
+    ImageSource? UserProfilePicture = null,
+    bool Compact = false)
+{
+    /// <summary>Optional session dashboard source for the conversation side panel.</summary>
+    internal ChatDashboardBinding? Dashboards { get; init; }
+
+    /// <summary>Side-panel state for this mount, shared with window chrome such as the title-bar toggle.</summary>
+    internal ChatConversationPanelState Panels { get; init; } = new();
+}
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -41,13 +50,15 @@ public sealed record OpenClawReactorChatRootProps(
 public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootProps>
 {
     private static bool s_showToolCalls = true;
+    private const int WelcomeComposerSlideMilliseconds = 260;
     private static bool s_showChatThinking = true;
     private static int s_toolCallsCollapseVersion;
     private static event EventHandler? ToolCallsVisibilityChanged;
 
     private string? _pendingSelectedThreadId;
     private bool _initialSelectionApplied;
-    private readonly ChatConversationPanelState _panels = new();
+    private ChatConversationPanelState _panels => Props.Panels;
+    private readonly ChatSessionFilesState _files = new();
 
     public static void SetToolCallsVisible(bool visible)
     {
@@ -77,8 +88,17 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     public override Element Render()
     {
         var props = Props;
+        var placementController = props.ComposerSession.Placement;
         var (snapshot, setSnapshot) = UseState<ChatDataSnapshot?>(null, threadSafe: true);
         var latestSnapshot = UseRef<ChatDataSnapshot?>(null);
+        var (_, setDraftRevision) = UseState(0L, threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            long revision = 0;
+            void Changed() => setDraftRevision(++revision);
+            props.ComposerSession.Controller.DraftChanged += Changed;
+            return () => props.ComposerSession.Controller.DraftChanged -= Changed;
+        }), props.ComposerSession);
         var (_, setPanelRevision) = UseState(0L, threadSafe: true);
         UseEffect((Func<Action>)(() =>
         {
@@ -90,8 +110,31 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             {
                 if (native is not null) native.ToolDetailsInvalidated -= Invalidated;
                 _panels.Invalidate();
+                _files.Bind(null, 0, 0, 0, false, null);
             };
         }), props.Provider);
+        var dashboardBinding = props.Dashboards;
+        var (_, setDashboardRevision) = UseState(0L, threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            if (dashboardBinding is null) return static () => { };
+            long revision = 0;
+            void Changed() => setDashboardRevision(Interlocked.Increment(ref revision));
+            dashboardBinding.View.Changed += Changed;
+            dashboardBinding.PendingOpenChanged += Changed;
+            return () =>
+            {
+                dashboardBinding.View.Changed -= Changed;
+                dashboardBinding.PendingOpenChanged -= Changed;
+            };
+        }), (object?)dashboardBinding ?? this);
+        var (_, setArtworkRevision) = UseState(ChatBackgroundArtwork.Revision, threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            void Changed() => setArtworkRevision(ChatBackgroundArtwork.Revision);
+            ChatBackgroundArtwork.Changed += Changed;
+            return () => ChatBackgroundArtwork.Changed -= Changed;
+        }), this);
         var (viewportWidth, setViewportWidth) = UseState(800d);
         var (viewportHeight, setViewportHeight) = UseState(620d);
         var (collapsedQuestionId, setCollapsedQuestionId) = UseState<string?>(null);
@@ -130,6 +173,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         {
             EventHandler visibilityChanged = (_, _) =>
             {
+                // Collapse-all and show or hide tools reflow the transcript; rows glide to their new places.
+                ChatTranscriptReflow.CaptureAll();
                 setShowToolCalls(s_showToolCalls);
                 setShowChatThinking(s_showChatThinking);
                 setToolCallsCollapseVersion(s_toolCallsCollapseVersion);
@@ -183,6 +228,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             ? null
             : snapshot.Threads.FirstOrDefault(thread => string.Equals(thread.Id, selectedId, StringComparison.Ordinal));
         if (selectedMaterializedThread is null
+            && !props.Compact
             && selectedId is not null
             && snapshot.DefaultThreadId is { } fallbackId
             && ChatLifecycleSelectionPolicy.ShouldFallback(
@@ -196,7 +242,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 string.Equals(thread.Id, fallbackId, StringComparison.Ordinal));
         }
 
-        var effectiveThread = selectedMaterializedThread ?? CreateComposeOnlyThread(props.Provider, snapshot);
+        var effectiveThread = selectedMaterializedThread
+            ?? CreateComposeOnlyThread(props.Provider, snapshot, props.Compact ? selectedId : null);
+        var draft = props.ComposerSession.Controller.FindDraft(effectiveThread?.Id);
+        if (draft is not null && effectiveThread is not null)
+            effectiveThread = draft.Project(effectiveThread);
         if (selectedMaterializedThread is { } selected && string.Equals(_pendingSelectedThreadId, selected.Id, StringComparison.Ordinal))
             _pendingSelectedThreadId = null;
 
@@ -239,15 +289,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var isComposeOnly = effectiveThread is not null && selectedMaterializedThread is null;
         var placementHistoryReady = isGatewayConnected
             && (isComposeOnly
-                ? snapshot.ComposeTarget.IsReady
+                ? draft is not null || placementController?.IsKnownCreatedSession(effectiveThread!.Id) == true
+                    || snapshot.ComposeTarget.IsReady
                     && string.Equals(snapshot.ComposeTarget.SessionKey, effectiveThread?.Id, StringComparison.Ordinal)
                 : effectiveThread is not null
                     && snapshot.CurrentHistoryThreads?.Contains(effectiveThread.Id) == true);
         var welcomeEligible = isEmptyConversation
             && isGatewayConnected
             && (
-                (isComposeOnly && snapshot.ComposeTarget.IsReady
-                    && snapshot.ComposeTarget.SessionKey == effectiveThread?.Id)
+                (isComposeOnly && placementHistoryReady)
                 || (!isComposeOnly && timeline.HistoryLoaded));
         var welcomeEligibilityKey = welcomeEligible
             ? $"{effectiveThread?.Id}|{isComposeOnly}|{timeline.HistoryLoaded}"
@@ -315,10 +365,41 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             (nativeProvider is null || panelSession is not null && current.CurrentHistoryThreads?.Contains(panelSession) == true) &&
             (panelSession is null || (current.TimelineGenerations?.GetValueOrDefault(panelSession) ?? 0) == timelineGeneration &&
                 (current.HistoryRevisions?.GetValueOrDefault(panelSession) ?? 0) == historyRevision);
+        bool SubagentsSourceCurrent() => selectedIdRef.Current == panelSession &&
+            (nativeProvider is null || nativeProvider.ToolDetailsGeneration == panelConnection) &&
+            latestSnapshot.Current is { } current &&
+            string.Equals(ToConnectionState(current.ConnectionStatus), "connected", StringComparison.Ordinal);
         _panels.Bind(props.Provider, panelSession, panelConnection, timelineGeneration, historyRevision,
-            entries, PanelSourceCurrent, panelProfile.Revision);
+            entries, PanelSourceCurrent, panelProfile.Revision, SubagentsSourceCurrent);
         var panelRevision = _panels.Revision;
+        var dashboardTarget = isGatewayConnected && selectedMaterializedThread is { } boardThread
+            ? new OpenClaw.Shared.Dashboards.BoardSessionTarget(boardThread.Id, boardThread.AgentId)
+            : null;
+        // Explicit opens may target a session missing from the chat list, such as an archived board.
+        var explicitDashboardTarget = dashboardTarget ?? (isGatewayConnected && effectiveThread is { } openThread
+            ? new OpenClaw.Shared.Dashboards.BoardSessionTarget(openThread.Id, openThread.AgentId)
+            : null);
+        var dashboardView = dashboardBinding?.View;
+        UseEffect((Func<Action>)(() => dashboardBinding is null || dashboardTarget is null
+                ? static () => { }
+                : dashboardBinding.Watch(_panels, dashboardTarget)),
+            (object?)dashboardTarget ?? this, (object?)dashboardView?.Client ?? this,
+            dashboardView?.Connected ?? false, dashboardView?.ConnectionRevision ?? 0);
+        UseEffect((Func<Action>)(() =>
+        {
+            if (explicitDashboardTarget is not null &&
+                dashboardBinding?.TryTakePendingOpen(explicitDashboardTarget.SessionKey) == true)
+                _panels.OpenDashboard(explicitDashboardTarget);
+            return static () => { };
+        }), (object?)explicitDashboardTarget ?? this, (object?)dashboardBinding?.PendingOpen ?? this);
+        _files.Bind(isGatewayConnected && !isComposeOnly ? panelSession : null, panelConnection, timelineGeneration,
+            historyRevision, timeline.TurnActive, nativeProvider is null ? null : nativeProvider.ListSessionFilesAsync);
 
+        // One child list feeds the Subagents pill, its tab and the spawn rows in the timeline.
+        var subagentChildren = isGatewayConnected && effectiveThread is not null
+            ? snapshot.Threads.Where(child => child.IsSubagent && !child.IsArchived
+                && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
+            : Array.Empty<ChatThread>();
         var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
             entries,
@@ -364,14 +445,24 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             LoadToolOutputAsync: dataProvider is null ? null : dataProvider.LoadToolOutputAsync,
             ToolDetailsProfileState: dataProvider?.ToolDetailsProfileState ?? default,
             ReadToolDetailsProfileState: dataProvider is null ? null : dataProvider.ReadToolDetailsProfileState,
-            ChildThreads: isGatewayConnected && effectiveThread is not null
-                ? snapshot.Threads.Where(child => !child.IsArchived
-                    && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
-                : [],
-            ProviderReview: isGatewayConnected ? effectiveThread?.ProviderReview : null,
             UserDisplayName: props.UserDisplayName,
             UserProfilePicture: props.UserProfilePicture,
-            OnOpenToolDetails: _panels.IsReady ? request => _panels.Open(request, panelRevision) : null);
+            OnOpenToolDetails: _panels.IsReady ? request => _panels.Open(request, panelRevision) : null,
+            ChildThreads: subagentChildren,
+            OnOpenWorkspaceFile: nativeProvider is not null && _panels.AreSubagentsReady && panelSession is { } fileSession
+                ? path => _panels.OpenFile(new(fileSession, path), panelRevision) : null,
+            CanOpenSession: isGatewayConnected && panelSession is { } parentSession
+                ? key => ChatToolRowLinks.IsOpenableSubagent(snapshot.Threads, parentSession, key)
+                : null,
+            OnOpenSession: isGatewayConnected
+                ? key => props.ComposerSession.Controller.TrySelectSession(key) : null,
+            OnOpenAssistantFile: nativeProvider is not null && _panels.AreSubagentsReady && panelSession is { } artifactSession
+                ? media => _panels.OpenFile(new(artifactSession,
+                    ChatAssistantMediaRenderer.DisplayName(media), media.Reference.ArtifactId, media.Reference.AgentId,
+                    media.MimeType ?? media.Reference.MimeType, media.Reference.SizeBytes), panelRevision)
+                : null,
+            ActiveReasoningId: timeline.ActiveReasoningId,
+            SkillUndo: dataProvider?.SkillUndo);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);
@@ -441,10 +532,12 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         void SelectThread(string threadId)
         {
             if (selectedIdRef.Current != threadId) _panels.Invalidate();
+            props.Dashboards?.CancelPendingOpenExcept(threadId);
             _pendingSelectedThreadId = threadId;
             selectedIdRef.Current = threadId;
             setSelectedId(threadId);
-            if (props.Provider is OpenClawChatDataProvider native)
+            if (!props.Compact && props.ComposerSession.Controller.FindDraft(threadId) is null
+                && props.Provider is OpenClawChatDataProvider native)
                 native.RememberSelectedThread(threadId);
         }
 
@@ -467,8 +560,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 {
                     try
                     {
-                        await props.ComposerSession.Controller.SendCoreAsync(
-                            suggestionThread.Id, suggestionThread.Title, suggestion, Array.Empty<ChatAttachment>());
+                        await props.ComposerSession.Controller.SendSuggestionAsync(
+                            suggestionThread.Id, suggestionThread.Title, suggestion);
                     }
                     finally
                     {
@@ -479,10 +572,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             };
         }
 
+        // The first send from an authoritatively empty conversation mounts the transcript fresh;
+        // its first rows are new messages, not loaded history, so they keep their entrance.
+        var emptyConversationId = UseRef<string?>(null);
+        var admitInitialEntrances = mode == ReactorChatTimelineMode.Timeline && effectiveThread is not null
+            && string.Equals(emptyConversationId.Current, effectiveThread.Id, StringComparison.Ordinal);
+        emptyConversationId.Current = mode == ReactorChatTimelineMode.Empty ? effectiveThread?.Id : null;
         var timelineElement = Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(
             mode,
             timelineProps,
-            OnOpenCheckpoints: props.OnOpenCheckpoints,
             HistoryRevision: historyRevision,
             TryCopyText: props.TryCopyText,
             HistoryFailed: historyFailed,
@@ -493,7 +591,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             AssistantAgentId: assistantAgentId,
             AssistantCatalog: props.ComposerSession.Placement?.State.Catalog,
             AssistantAvatarImageSource: avatarCache,
-            AssistantRosterAgent: selectedRosterAgent));
+            AssistantRosterAgent: selectedRosterAgent,
+            ViewportWidth: viewportWidth,
+            AdmitInitialEntrances: admitInitialEntrances));
 
         var pendingQuestion = effectiveThread is null ? null : questionSnapshot?.Prompts.FirstOrDefault(prompt =>
             prompt.Request.Status == "pending"
@@ -513,7 +613,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 CurrentThread: effectiveThread,
                 AvailableModels: snapshot.AvailableModels,
                 ModelChoices: snapshot.ModelChoices,
-                MessageOptionsDisabled: timeline.TurnActive || hasPendingQueuedSend,
+                MessageOptionsDisabled: hasPendingQueuedSend,
                 QueuedMessages: queuedMessages,
                 AvailableCommands: snapshot.AvailableCommands,
                 CommandsSupported: snapshot.CommandsSupported,
@@ -522,10 +622,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 ModelCatalogRevision: nativeProvider?.ModelCatalogRevision ?? 0)
             {
                 IsVisible = composerVisible,
-                ShowPlacementPickers = placementHistoryReady && mode == ReactorChatTimelineMode.Empty,
+                ShowPlacementPickers = !props.Compact && placementHistoryReady
+                    && mode == ReactorChatTimelineMode.Empty
+                    && draft?.UsesGatewayDefaultAgent != true
+                    && props.AgentRosterSource?.AgentsListUnsupported != true,
                 PlacementTargetIsEmpty = isEmptyConversation,
                 PlacementHistoryReady = placementHistoryReady,
                 PlacementTargetIsNew = isComposeOnly,
+                PlacementRequiresCreation = draft is { UsesGatewayDefaultAgent: false },
+                PlacementDraft = draft,
                 AgentIdentity = assistantIdentity,
                 AgentRosterPresentation = selectedRosterAgent,
                 ContextUsage = contextUsage
@@ -534,7 +639,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 props.ComposerSession,
                 composerInputs,
                 snapshot,
-                () => setScrollToBottomToken(scrollToBottomToken + 1)));
+                () => setScrollToBottomToken(scrollToBottomToken + 1),
+                Compact: props.Compact));
         }
 
         var questions = props.Provider is OpenClawChatDataProvider { Questions: { } questionCoordinator }
@@ -543,10 +649,21 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     new(questionCoordinator, effectiveThread.Id, effectiveThread.AgentId, viewportWidth, viewportHeight,
                         collapsed => setCollapsedQuestionId(collapsed ? pendingQuestion?.Request.Id : null), questionCollapsed))
                 : Empty();
-        var showWelcome = mode == ReactorChatTimelineMode.Empty;
+        var showWelcome = !props.Compact && mode == ReactorChatTimelineMode.Empty;
+        // The first send moves the composer from the centered welcome block to the bottom.
+        // Measure its input box (the same control in both layouts, unlike the welcome block
+        // around it) where it is now; after layout it slides from there, without moving focus.
+        var composerContentRef = this.UseElementRef<Grid>();
+        var composerAreaRef = this.UseElementRef<ChatMotionHost>();
+        var composerWasWelcome = UseRef(false);
+        if (composerWasWelcome.Current && !showWelcome
+            && composerContentRef.Current is { } composerContent && composerAreaRef.Current is { } composerScroller
+            && ChatMotion.FindByAutomationId(composerContent, "ChatComposerInput") is { } composerInput)
+            ChatMotion.SlideFromCurrentPosition(composerInput, composerScroller, WelcomeComposerSlideMilliseconds);
+        composerWasWelcome.Current = showWelcome;
         // Keep the composer at the same tree position across the first send. Moving
         // the control into a different parent would lose focus, caret and flyouts.
-        var composerArea = ScrollViewer(
+        var composerArea = ChatMotion.Host(ScrollViewer(
             Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto],
                 composerElement.WithKey("chat-composer").Grid(row: 0),
                 showWelcome
@@ -557,7 +674,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                         .Grid(row: 1)
                     : Empty().Grid(row: 1))
                 .Margin(0, showWelcome ? 24 : 0, 0, 0)
-                .VAlign(showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top))
+                .VAlign(showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top)
+                .Ref(composerContentRef))
             .Set(scroll =>
             {
                 scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
@@ -565,17 +683,45 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 scroll.HorizontalContentAlignment = HorizontalAlignment.Stretch;
                 scroll.VerticalContentAlignment = showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top;
             })
+            .MaxHeight(props.Compact ? 260 : double.PositiveInfinity)
             .IsVisible(composerVisible)
-            .AutomationId("ChatComposerArea")
+            .AutomationId("ChatComposerArea"))
+            .Ref(composerAreaRef)
+            .OnUnmountAdd(ChatMotion.Reset)
             .WithKey("chat-composer-area");
         var conversation = Grid(
             [GridSize.Star()],
-            [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
-            showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
+            [showWelcome ? GridSize.Auto : props.Compact ? (isEmptyConversation ? GridSize.Auto : GridSize.Star()) : GridSize.Star(),
+                GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
+            // Theme artwork behind everything else, as the dashboard draws it behind its new-session page and chats.
+            (props.Compact
+                    ? Empty()
+                    : ChatBackgroundArtwork.Render(showWelcome ? ThemeBackgroundSurface.NewSession : ThemeBackgroundSurface.Conversation))
+                .WithKey("chat-background-artwork").Grid(row: 0, rowSpan: 6),
+            showWelcome || (props.Compact && isEmptyConversation)
+                ? Empty().Grid(row: 0)
+                : props.Compact
+                    ? Border(timelineElement).Grid(row: 0)
+                    : timelineElement.Grid(row: 0),
             Border(questions).WithKey("chat-question-area").Grid(row: 1),
-            ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight)
+            // A stable wrapper keeps the panel's own mount and unmount (and its fade) inside this slot.
+            Border(ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight))
                 .WithKey("chat-pending-messages").Grid(row: 2),
-            composerArea.Grid(row: 3))
+            Component<ReactorChatProviderReview, ReactorChatProviderReviewProps>(
+                    new(isGatewayConnected ? effectiveThread?.ProviderReview : null, viewportWidth))
+                .WithKey("chat-provider-review").Grid(row: 3),
+            // Panel pills share one reading-width row; each pill hides itself when it has nothing to open.
+            Border(HStack(6,
+                    Component<ReactorChatSubagentsPill, ReactorChatSubagentsPillProps>(new(_panels, subagentChildren))
+                        .WithKey("chat-subagents-pill"),
+                    Component<ReactorChatFilesPill, ReactorChatFilesPillProps>(
+                            new(_panels, _files, panelRevision, _panels.AreSubagentsReady, _files.Version))
+                        .WithKey("chat-files-pill")))
+                .MaxWidth(ChatVisuals.ReadingWidth)
+                .Margin(ChatVisuals.Gutter(viewportWidth), 0, ChatVisuals.Gutter(viewportWidth), 0)
+                .HAlign(HorizontalAlignment.Stretch)
+                .WithKey("chat-panel-pills").Grid(row: 4),
+            composerArea.Grid(row: 5))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .Set(grid =>
             {
@@ -586,8 +732,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .VAlign(VerticalAlignment.Stretch)
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth, setViewportHeight))
             .OnUnmount(ChatVisuals.StopObserving);
+        var subagents = Component<ReactorChatSubagents, ReactorChatSubagentsProps>(new(subagentChildren, _panels));
+        var files = Component<ReactorChatFiles, ReactorChatFilesProps>(
+            new(_files, _files.Version, timelineProps.OnOpenWorkspaceFile));
+        var launcher = ReactorChatPanelLauncher.Render(_panels, panelRevision,
+            dashboardView is null ? null : explicitDashboardTarget);
         return Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(
-            new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps));
+            new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps, subagents,
+                dashboardView, files,
+                nativeProvider is null ? null : nativeProvider.LoadWorkspaceFileAsync, launcher));
     }
 
     private static Element RenderLoading() =>
@@ -597,9 +750,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
     private ChatThread? CreateComposeOnlyThread(
         IChatDataProvider provider,
-        ChatDataSnapshot snapshot)
+        ChatDataSnapshot snapshot,
+        string? explicitThreadId = null)
     {
-        var composeKey = _pendingSelectedThreadId
+        var composeKey = explicitThreadId ?? _pendingSelectedThreadId
             ?? (snapshot.ComposeTarget.IsReady ? snapshot.ComposeTarget.SessionKey : null);
         if (composeKey is null)
             return null;

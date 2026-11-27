@@ -45,15 +45,11 @@ public sealed partial class NativeGatewaySetupPage : Page
             var status = new SetupPhaseStatus();
             status.Apply(SetupInstallationStatus.Pending);
             var header = SetupLocalization.GetString($"Onboarding_Native_{key}");
-            var row = new SettingsCard
-            {
-                Header = header,
-                Content = status,
-            };
-            AutomationProperties.SetAutomationId(row, $"NativeGateway{key}");
+            status.Header = header;
+            AutomationProperties.SetAutomationId(status, $"NativeGateway{key}");
             _rows.Add(status);
             _stepHeaders.Add(header);
-            StepsPanel.Children.Add(row);
+            StepsPanel.Children.Add(status);
         }
         Loaded += (_, _) => StartOperation();
         Unloaded += (_, _) => _operationCts?.Cancel();
@@ -272,8 +268,13 @@ public sealed partial class NativeGatewaySetupPage : Page
             cancellationToken);
         _log?.Info($"Gateway package {package.PackageFamilyName} {package.Version} is registered.");
         var log = _log ?? throw new InvalidOperationException("The native setup log is unavailable.");
-        if (acquiredMissingPackage)
-            await GatewayPackageCleanup.RegisterAsync(new CommandRunner(log), ownNativePackage: true, ct: CancellationToken.None);
+        if (acquiredMissingPackage &&
+            !await GatewayPackageCleanup.RegisterAsync(
+                new CommandRunner(log), ownNativePackage: true, ct: CancellationToken.None))
+        {
+            log.Warn(GatewayPackageCleanup.CleanupUnavailableWarning);
+            GatewayCleanupWarningBar.IsOpen = true;
+        }
         cancellationToken.ThrowIfCancellationRequested();
         SetCurrentStep(2);
         var appLogger = new SetupOpenClawLogger(log, prefix: "");

@@ -45,6 +45,10 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     private readonly Queue<Func<bool>> _pendingMutations = new();
     private bool _draining;
 
+    /// <summary>True while <see cref="DrainQueue"/> is applying mutations. Read and
+    /// written only on the UI thread, where every drain runs.</summary>
+    private bool _drainRunning;
+
     /// <summary>Disposal flag read under three different synchronization domains:
     /// with <see cref="_queueLock"/> held (<see cref="Mutate"/>'s authoritative
     /// check, <see cref="DrainQueue"/>'s empty-queue check), with
@@ -205,8 +209,13 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
 
     public void SetDraft(string value)
     {
-        Mutate(() =>
+        // The composer also reports the text Reactor writes for a programmatic
+        // change; that repeat must not count as a new edit or reset slash state.
+        MutateIfChanged(() =>
         {
+            if (string.Equals(_draft, value, StringComparison.Ordinal))
+                return false;
+
             _draftRevision++;
             _dismissedSlashInputRevision = null;
             _draft = value;
@@ -215,6 +224,7 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
                 _inputs?.AvailableCommands,
                 _slashMenuState);
             RecomputeSlashDisplay();
+            return true;
         });
     }
 
@@ -428,7 +438,14 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
         }
 
         if (!shouldScheduleDrain)
+        {
+            // A background mutation already scheduled a drain. On the UI thread,
+            // apply the queued work and this change now rather than waiting for it:
+            // the composer needs a native edit reflected before the next render.
+            if (!_drainRunning && _dispatcher.HasThreadAccess)
+                DrainQueue();
             return;
+        }
 
         if (_dispatcher.HasThreadAccess)
         {
@@ -473,6 +490,24 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     /// before <see cref="Dispose"/> can return.
     /// </remarks>
     private void DrainQueue()
+    {
+        // A reentrant call (for example, a stale scheduled drain dispatched while a
+        // PropertyChanged subscriber pumps messages) leaves the work to the running loop.
+        if (_drainRunning)
+            return;
+
+        _drainRunning = true;
+        try
+        {
+            DrainPending();
+        }
+        finally
+        {
+            _drainRunning = false;
+        }
+    }
+
+    private void DrainPending()
     {
         while (true)
         {

@@ -13,15 +13,19 @@ namespace OpenClaw.Tray.UITests;
 public sealed class StartupWindowUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public Task UnconfiguredLaunchAndReactivation_ShowOnlySetup() => VerifyStartupAsync(configured: false);
 
     [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public Task ConfiguredLaunchAndReactivation_ShowOnlyWorkspaceWithoutNodePairing() => VerifyStartupAsync(configured: true);
 
     [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public Task PostSetupRestart_DoesNotReopenSetup() => VerifyStartupAsync(configured: false, postSetupRestart: true);
 
     [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public Task UnreadableIdentity_KeepsWorkspaceRecoveryAvailable() => VerifyStartupAsync(configured: true, corruptIdentity: true);
 
     private async Task VerifyStartupAsync(bool configured, bool postSetupRestart = false, bool corruptIdentity = false)
@@ -140,7 +144,7 @@ public sealed class StartupWindowUiTests(ITestOutputHelper output)
         {
             Assert.Contains(windows, window => IsSetup(window) &&
                 window.FindFirst(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.NameProperty, "Welcome to OpenClaw")) is not null);
+                    new PropertyCondition(AutomationElement.NameProperty, "Meet your new sidekick.")) is not null);
         }
         output.WriteLine($"{phase}: setup={windows.Count(IsSetup)}, workspace={windows.Count(IsWorkspace)}");
     }

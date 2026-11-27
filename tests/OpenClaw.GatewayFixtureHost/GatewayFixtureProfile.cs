@@ -54,6 +54,7 @@ public sealed class GatewayFixtureProfile : IDisposable
                 AutoStart = false,
                 GlobalHotkeyEnabled = false,
                 ShowNotifications = false,
+                ShowDesktopCompanion = false,
                 NotifyChatResponses = false,
                 ShowPairingApprovalDialog = false,
                 HasSeenActivityStreamTip = true,

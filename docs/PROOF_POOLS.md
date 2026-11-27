@@ -90,8 +90,9 @@ normal build and pull request validation path. CI runs the full
 malformed-contract matrix separately so local builds keep the documentation
 gate fast. Ubuntu classification runs the canonical proof-boundary selector
 before allocating that Windows job. Only a successful, explicit `false` skips
-the job; unknown selection requires the full matrix. CI Gate checks the effective
-decision against the job result. Non-PR events always require the matrix.
+the job. Unknown selection requires the full matrix. CI Gate checks the effective
+decision against the job result. Pull requests and merge groups use their changed
+paths. All other events run the full matrix.
 
 ## Validate local execution evidence
 

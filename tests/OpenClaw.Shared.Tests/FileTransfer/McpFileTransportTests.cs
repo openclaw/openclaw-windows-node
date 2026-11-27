@@ -12,6 +12,13 @@ namespace OpenClaw.Shared.Tests.FileTransfer;
 
 public class McpFileTransportTests
 {
+    private const string StepTimeoutVariable = "OPENCLAW_TEST_MCP_STEP_TIMEOUT_SECONDS";
+    // Hang guard for one event-driven loopback step. The server pipeline runs on the shared
+    // thread pool, which a loaded runner can starve for several seconds; this never gates behavior.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(StepTimeoutVariable), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(30);
+
     [Fact]
     public async Task GenericResponseAboveSixteenMiBPreservesTheExistingHttpContract()
     {
@@ -168,7 +175,8 @@ public class McpFileTransportTests
         using var registration = lease.Token.Register(() =>
         {
             rotating.SetResult();
-            Assert.True(releaseRotation.Wait(TimeSpan.FromSeconds(10)));
+            // The test releases rotation after at most two steps, so this guard only catches a hung test.
+            Assert.True(releaseRotation.Wait(StepTimeout * 3));
         });
         await using var fixture = new Server(new ResultCapability("file.fetch", "must not run"), bridge: bridge,
             bodyReader: async (request, _, ct) =>
@@ -177,13 +185,21 @@ public class McpFileTransportTests
                 using var reader = new StreamReader(request.InputStream);
                 return await reader.ReadToEndAsync(ct);
             });
-        var rotation = Task.Run(() => fixture.HttpServer.UpdateAuthToken("replacement"));
+        // The stale request stays open across both step waits and the rotation release.
+        fixture.Http.Timeout = StepTimeout * 3;
+        // Rotation blocks synchronously inside the lease callback, so keep it off the thread pool
+        // that the server and client need to deliver the stale request.
+        var rotation = Task.Factory.StartNew(
+            () => fixture.HttpServer.UpdateAuthToken("replacement"),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         Task<JsonElement>? stale = null;
         try
         {
-            await rotating.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await rotating.Task.WaitAsync(StepTimeout);
             stale = fixture.Call("openclaw/files/open", open);
-            await bodyRead.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await bodyRead.Task.WaitAsync(StepTimeout);
         }
         finally
         {

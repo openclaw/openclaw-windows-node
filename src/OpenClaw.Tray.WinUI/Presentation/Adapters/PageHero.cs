@@ -40,12 +40,15 @@ public sealed record PageHeroTile(
 /// <summary>Shared Fluent hero, summary tiles, attention badges, and reduced-motion-aware transitions.</summary>
 public static class PageHero
 {
-    private const double HeaderRadius = 8;
     private const double TileGap = PageResponsiveLayout.GapGroup;
     private const double HighlightDurationMs = 1200;
     private static readonly ConditionalWeakTable<FrameworkElement, Storyboard> Highlights = new();
 
-    /// <summary>Builds a hero; callers own localized text, actions, accessibility IDs and page state.</summary>
+    /// <summary>
+    /// Builds a plain page heading; callers own localized text, actions, accessibility IDs and page state.
+    /// <paramref name="glyph"/>, <paramref name="highContrast"/>, <paramref name="glyphAutomationId"/> and
+    /// <paramref name="pageTag"/> are accepted for caller compatibility; the header renders no leading icon.
+    /// </summary>
     /// <param name="titleIsTabStop">Opt in when the named heading is a page-navigation focus destination.</param>
     public static Element Header(
         string automationId,
@@ -66,7 +69,7 @@ public static class PageHero
         var titleLine = VStack(4,
             TextBlock(title)
                 .Set(native => native.Style = (Style)Application.Current.Resources["TitleTextBlockStyle"])
-                .FontSize(narrow ? 24 : 28).FontWeight(FontWeights.SemiBold)
+                .FontSize(28).FontWeight(FontWeights.SemiBold)
                 .TextWrapping(TextWrapping.WrapWholeWords).MaxLines(2)
                 .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(title)
                 .AutomationId(titleAutomationId)
@@ -79,23 +82,18 @@ public static class PageHero
             Grid([GridSize.Auto], [GridSize.Auto], actions), reducedMotion);
         // Change placement, not ancestry, so actions retain native focus and flyout state.
         var content = WithMotion(Grid(
-            [GridSize.Px(48), GridSize.Star(), GridSize.Auto],
+            [GridSize.Star(), GridSize.Auto],
             [GridSize.Auto, GridSize.Auto],
-            PageHeroIcon.Marker(automationId, glyph, pageTag, highContrast, glyphAutomationId),
-            titleLine.Margin(16, 0, narrow ? 0 : 16, 0)
-                .Grid(column: 1, row: 0, columnSpan: narrow ? 2 : 1),
+            titleLine.Margin(0, 0, narrow ? 0 : 16, 0)
+                .Grid(column: 0, row: 0, columnSpan: narrow ? 2 : 1),
             animatedActions
-                .Grid(column: narrow ? 1 : 2, row: narrow ? 1 : 0, columnSpan: narrow ? 2 : 1)
-                .Margin(narrow ? 16 : 0, narrow ? 12 : 0, 0, 0)
+                .Grid(column: narrow ? 0 : 1, row: narrow ? 1 : 0, columnSpan: narrow ? 2 : 1)
+                .Margin(0, narrow ? 12 : 0, 0, 0)
                 .HAlign(narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right)
                 .VAlign(narrow ? VerticalAlignment.Top : VerticalAlignment.Center))
-            .Padding(narrow ? 16 : 24, narrow ? 16 : 20)
             .AutomationId($"{automationId}Grid"), reducedMotion);
 
-        var hero = Border(Grid([GridSize.Star()], [GridSize.Star()], AccentWash(highContrast), content))
-            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
-            .BorderBrush(Theme.Ref("CardStrokeColorDefaultBrush"))
-            .BorderThickness(1).CornerRadius(HeaderRadius)
+        var hero = Border(content)
             .AutomationName(title).AutomationId(automationId);
         return WithMotion(hero, reducedMotion);
     }
@@ -233,15 +231,6 @@ public static class PageHero
         storyboard.Stop();
     }
 
-    private static Element AccentWash(bool highContrast)
-    {
-        if (highContrast) return Empty();
-        return Border(Empty()).CornerRadius(HeaderRadius)
-            .Set(native => FunctionalTheme.EnsureThemeCallback(native, () => native.Background = AccentGradient(native.ActualTheme)))
-            .IsHitTestVisible(false).AccessibilityView(AccessibilityView.Raw)
-            .AutomationId("PageHeroAccentWash");
-    }
-
     private static void ConfigureMotion(FrameworkElement native, bool reducedMotion, bool staggerChildren)
     {
         var animate = AnimationsEnabled(reducedMotion);
@@ -333,22 +322,6 @@ public static class PageHero
             Theme.Ref("InfoBarErrorSeverityBackgroundBrush")),
         _ => (Tone(tone).Foreground, Tone(tone).Foreground, Tone(tone).Background),
     };
-
-    private static LinearGradientBrush AccentGradient(ElementTheme theme)
-    {
-        var accent = FunctionalTheme.ResolveColor("AccentFillColorDefault", theme);
-        return new LinearGradientBrush
-        {
-            StartPoint = new global::Windows.Foundation.Point(0, 0),
-            EndPoint = new global::Windows.Foundation.Point(1, 1),
-            GradientStops =
-            [
-                new GradientStop { Offset = 0, Color = Color.FromArgb(0x26, accent.R, accent.G, accent.B) },
-                new GradientStop { Offset = 0.58, Color = Color.FromArgb(0x0D, accent.R, accent.G, accent.B) },
-                new GradientStop { Offset = 1, Color = Color.FromArgb(0, accent.R, accent.G, accent.B) },
-            ],
-        };
-    }
 
     private static bool AnimationsEnabled(bool reducedMotion) =>
         !reducedMotion && new UISettings().AnimationsEnabled;

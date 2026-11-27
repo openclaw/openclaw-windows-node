@@ -15,6 +15,7 @@
     <DefaultLanguage>en-US</DefaultLanguage>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <OpenClawReactorVersion Condition="'$(OpenClawReactorVersion)' == ''">0.1.0-preview.18</OpenClawReactorVersion>
     <!-- app.manifest declares PerMonitorV2 DPI awareness and must be embedded in every
          flavor. Packaging does not supply DPI awareness: an MSIX built without this
          ships a DPI-unaware executable that renders blurry on mixed-DPI displays, and
@@ -100,10 +101,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
     <PackageReference Include="ColorCode.Core" Version="2.0.15" />
-    <!-- Keep the released Core and Advanced packages aligned, including the inherited
-         recycled-anchor workaround and upstream Markdown list layout. -->
-    <PackageReference Include="Microsoft.UI.Reactor" Version="0.1.0-preview.17" />
-    <PackageReference Include="Microsoft.UI.Reactor.Advanced" Version="0.1.0-preview.17" />
+    <!-- Keep both released Reactor packages aligned. -->
+    <PackageReference Include="Microsoft.UI.Reactor" Version="$(OpenClawReactorVersion)" />
+    <PackageReference Include="Microsoft.UI.Reactor.Advanced" Version="$(OpenClawReactorVersion)" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MicrosoftWindowsAppSDKVersion)" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(MicrosoftWindowsSdkBuildToolsVersion)" />
     <PackageReference Include="OpenTelemetry" Version="1.16.0" />
@@ -268,7 +268,7 @@
       <!-- CI allocates the package base independently of the application's GitVersion. -->
       <_AppxBaseVersion Condition="'$(MsixPackageBaseVersion)' != ''">$(MsixPackageBaseVersion)</_AppxBaseVersion>
       <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(MsixRevision)' != ''">$(MsixRevision)</_AppxRevision>
-      <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(_AppxRevision)' == '' and '$(GitVersion_CommitsSinceVersionSource)' != ''">$(GitVersion_CommitsSinceVersionSource)</_AppxRevision>
+      <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(_AppxRevision)' == '' and '$(GitVersion_VersionSourceDistance)' != ''">$(GitVersion_VersionSourceDistance)</_AppxRevision>
       <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(_AppxRevision)' == ''">1</_AppxRevision>
       <_AppxRevision Condition="'$(DevBuild)' != 'true'">0</_AppxRevision>
       <_AppxManifestVersion>$(_AppxBaseVersion).$(_AppxRevision)</_AppxManifestVersion>

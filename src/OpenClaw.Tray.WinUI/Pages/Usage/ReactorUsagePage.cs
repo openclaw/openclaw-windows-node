@@ -109,7 +109,7 @@ internal sealed class ReactorUsagePage : Component<UsagePageProps>
 
         var scroll = PageScroll(Grid([GridSize.Star()], [GridSize.Auto],
                     VStack(PageResponsiveLayout.GapStack, header, body)
-                        .Padding(layout.Padding, PageResponsiveLayout.PaddingWide, layout.Padding, PageResponsiveLayout.PaddingWide)
+                        .Padding(layout.Padding, PageResponsiveLayout.PaddingTop, layout.Padding, PageResponsiveLayout.PaddingBottom)
                         .Width(layout.ColumnWidth).HAlign(HorizontalAlignment.Center).AutomationId("UsageContentColumn")
                         .Grid(row: 0).WithKey("content"))
                 .Width(width).HAlign(HorizontalAlignment.Left))

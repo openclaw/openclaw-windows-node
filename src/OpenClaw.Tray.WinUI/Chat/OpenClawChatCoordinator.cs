@@ -1,6 +1,6 @@
-using System.Text.RegularExpressions;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
+using OpenClaw.Shared.Markdown;
 using OpenClawTray.Services;
 
 namespace OpenClawTray.Chat;
@@ -241,7 +241,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
                     playbackMute = _acquirePlaybackMute();
             }
 
-            var speakText = SanitizeForSpeech(text);
+            var speakText = ChatSpeechTextProjector.Project(text);
             if (string.IsNullOrWhiteSpace(speakText)) return;
             var speakArgs = new TtsSpeakArgs
             {
@@ -310,44 +310,6 @@ public sealed class OpenClawChatCoordinator : IDisposable
             _lastManualSpeechAt = now;
             return false;
         }
-    }
-
-    /// <summary>
-    /// Strips markdown formatting, emojis, code blocks, and other non-speakable
-    /// content so TTS output sounds natural.
-    /// </summary>
-    private static string SanitizeForSpeech(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return text;
-
-        var s = text;
-
-        // Remove fenced code blocks entirely (```...```)
-        s = Regex.Replace(s, @"```[\s\S]*?```", " ");
-        // Remove inline code (`...`)
-        s = Regex.Replace(s, @"`[^`]+`", " ");
-        // Remove markdown bold/italic markers (**, *, __, _)
-        s = Regex.Replace(s, @"\*{1,2}(.+?)\*{1,2}", "$1");
-        s = Regex.Replace(s, @"_{1,2}(.+?)_{1,2}", "$1");
-        // Remove markdown headers (# ## ### etc.)
-        s = Regex.Replace(s, @"^#{1,6}\s*", "", RegexOptions.Multiline);
-        // Remove markdown links [text](url) → text
-        s = Regex.Replace(s, @"\[([^\]]+)\]\([^)]+\)", "$1");
-        // Remove raw URLs
-        s = Regex.Replace(s, @"https?://\S+", " ");
-        // Remove bullet/list markers
-        s = Regex.Replace(s, @"^\s*[-*•]\s+", "", RegexOptions.Multiline);
-        // Remove numbered list markers
-        s = Regex.Replace(s, @"^\s*\d+\.\s+", "", RegexOptions.Multiline);
-        // Remove emojis (supplementary plane: emoticons, symbols, etc.)
-        s = Regex.Replace(s, @"[\u200B\uFE0F]", "");
-        s = Regex.Replace(s, @"\p{Cs}{2}", " "); // surrogate pairs (emojis in supplementary planes)
-        // Remove remaining special characters that sound odd when spoken
-        s = Regex.Replace(s, @"[~|<>{}[\]\\*]", " ");
-        // Collapse multiple spaces/newlines
-        s = Regex.Replace(s, @"\s{2,}", " ");
-
-        return s.Trim();
     }
 
     public void Dispose()

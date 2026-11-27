@@ -190,8 +190,8 @@ internal sealed class AppNotificationService
     }
 
     /// <summary>
-    /// Opens the current action for an active reminder, dismissing that version only after native
-    /// admission or a confirmed browser launch. Deferred intents retain it, even if they later run.
+    /// Opens the current action for an active reminder without dismissing it, matching the web Inbox.
+    /// The result reports native admission or a confirmed browser launch, not acknowledgment.
     /// This does not approve, abort, or otherwise resolve the underlying Gateway action.
     /// </summary>
     public async Task<bool> NavigateActionAsync(string notificationId, Func<string, string?, Task<bool>> tryNavigate)
@@ -216,13 +216,12 @@ internal sealed class AppNotificationService
             return false;
         }
 
-        TryDismiss(notificationId, notification);
         return true;
     }
 
     public void Dismiss(string notificationId) => TryDismiss(notificationId);
 
-    private void TryDismiss(string notificationId, AppNotification? expected = null)
+    private void TryDismiss(string notificationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(notificationId);
 
@@ -230,8 +229,7 @@ internal sealed class AppNotificationService
         var changed = false;
         lock (_gate)
         {
-            if (_current is not null && string.Equals(_current.Id, notificationId, StringComparison.Ordinal) &&
-                (expected is null || ReferenceEquals(_current, expected)))
+            if (_current is not null && string.Equals(_current.Id, notificationId, StringComparison.Ordinal))
             {
                 _current = _queue.Count > 0 ? DequeueLocked() : null;
                 changed = true;
@@ -240,8 +238,7 @@ internal sealed class AppNotificationService
             {
                 for (var i = 0; i < _queue.Count; i++)
                 {
-                    if (!string.Equals(_queue[i].Id, notificationId, StringComparison.Ordinal) ||
-                        (expected is not null && !ReferenceEquals(_queue[i], expected)))
+                    if (!string.Equals(_queue[i].Id, notificationId, StringComparison.Ordinal))
                         continue;
 
                     _queue.RemoveAt(i);

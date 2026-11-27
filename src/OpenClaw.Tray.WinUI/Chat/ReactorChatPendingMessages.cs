@@ -27,7 +27,7 @@ internal static class ReactorChatPendingMessages
         if (context.QueuedMessages is not { Count: > 0 } messages)
             return Empty();
 
-        return Border(
+        return ChatMotion.Host(Border(
                 ScrollViewer(VStack(0, messages.Select((message, index) => RenderRow(context, message, index, width)
                     .WithKey($"{context.SessionId}|{context.TimelineGeneration}|queued:{message.Id}")).ToArray()))
                     .MaxHeight(Math.Min(ChatVisuals.ActivityDetailsMaxHeight, height / 3))
@@ -39,11 +39,13 @@ internal static class ReactorChatPendingMessages
                     }))
             .Background(Theme.Ref("ChatCardBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush")).BorderThickness(1)
-            .CornerRadius(ChatVisuals.ComposerRadius)
+            .ThemedCorner(() => ChatVisuals.ComposerRadius)
             .MaxWidth(ChatVisuals.ReadingWidth)
             .Margin(ChatVisuals.Gutter(width), 0, ChatVisuals.Gutter(width), ChatVisuals.CompactGap)
             .HAlign(HorizontalAlignment.Stretch)
-            .AutomationId("ChatPendingMessages");
+            .AutomationId("ChatPendingMessages"))
+            // The panel fades in when the first message queues; later rows and removal stay immediate.
+            .EnterOnMount(0, ChatVisuals.PanelRevealMilliseconds, fade: true);
     }
 
     private static Element RenderRow(ChatTimelinePresentationContext context, ChatQueuedMessage message, int index,

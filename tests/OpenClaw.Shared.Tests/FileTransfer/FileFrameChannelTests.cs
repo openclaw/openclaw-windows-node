@@ -36,6 +36,18 @@ public class FileFrameChannelTests
     }
 
     [Fact]
+    public async Task Abort_ThrowingTokenCallbackStillCompletesReady()
+    {
+        await using var channel = new FileFrameChannel((_, _) => ValueTask.CompletedTask);
+        using var callback = channel.Token.Register(() => throw new InvalidOperationException("synthetic"));
+
+        Assert.ThrowsAny<Exception>(channel.Abort);
+
+        Assert.True(channel.Ready.IsCanceled);
+        Assert.ThrowsAny<OperationCanceledException>(() => channel.Receive(""));
+    }
+
+    [Fact]
     public async Task ReadinessPrecedesBufferedCallbacksAndInputNeedsNoReciprocalReady()
     {
         var readyWritten = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

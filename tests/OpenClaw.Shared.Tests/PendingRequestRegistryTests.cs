@@ -142,6 +142,26 @@ public sealed class PendingRequestRegistryTests
     }
 
     [Fact]
+    public async Task CapturedDrain_DoesNotFaultRequestsFromAReopenedConnection()
+    {
+        var registry = OpenRegistry();
+        var old = registry.RegisterApproval("progress", "node.invoke.progress");
+        var drainLostTransport = registry.CaptureDrain();
+        Assert.False(old.Task.IsCompleted);
+        Assert.Throws<InvalidOperationException>(() => registry.RegisterTracked("closed", "health"));
+
+        registry.OpenConnection();
+        var current = registry.RegisterApproval("progress", "node.invoke.progress");
+        drainLostTransport();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await old.Task);
+        Assert.False(current.Task.IsCompleted);
+        Assert.True(registry.TryTake("progress", out var resolution));
+        Assert.True(Assert.IsType<ApprovalRequestResolution>(resolution).TryComplete(true));
+        Assert.True(await current.Task);
+    }
+
+    [Fact]
     public async Task StaleHandle_CannotRemoveReusedIdFromNewGeneration()
     {
         var registry = OpenRegistry();

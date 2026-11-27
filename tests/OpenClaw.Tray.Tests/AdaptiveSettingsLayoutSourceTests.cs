@@ -19,11 +19,35 @@ public sealed class AdaptiveSettingsLayoutSourceTests
         foreach (var field in fields)
         {
             Assert.Null(field.Attribute("Width"));
-            Assert.Null(field.Attribute("MinWidth"));
+            // A SettingsCard row wraps its content below the header when narrow, so a field hosted there may
+            // reserve the shared minimum width; everywhere else a minimum would force the field past its viewport.
+            if (field.Ancestors().Any(ancestor => ancestor.Name.LocalName == "SettingsCard"))
+            {
+                var minWidth = field.Attribute("MinWidth")?.Value;
+                Assert.True(minWidth is null or "{StaticResource SettingsFieldMinWidth}",
+                    $"{field.Name.LocalName} in a SettingsCard may only use the shared SettingsFieldMinWidth.");
+            }
+            else
+            {
+                Assert.Null(field.Attribute("MinWidth"));
+            }
             if (field.Attribute("MaxWidth") is not null)
                 Assert.Equal(field.Name.LocalName is "Slider" or "ProgressBar" ? "Stretch" : "Left",
                     field.Attribute("HorizontalAlignment")?.Value);
         }
+    }
+
+    [Theory]
+    [InlineData("LocalAiPage")]
+    [InlineData("DefaultModelPage")]
+    [InlineData("VoiceSettingsPage")]
+    public void SettingsCardFieldWidthIsOneSharedBoundedResource(string page)
+    {
+        var markup = XDocument.Parse(Read("Pages", page + ".xaml"));
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var width = Assert.Single(markup.Descendants(), element =>
+            element.Name.LocalName == "Double" && element.Attribute(xaml + "Key")?.Value == "SettingsFieldMinWidth");
+        Assert.InRange(double.Parse(width.Value, System.Globalization.CultureInfo.InvariantCulture), 160, 280);
     }
 
     [Fact]

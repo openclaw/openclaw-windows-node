@@ -1,11 +1,13 @@
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Markdown;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Helpers;
+using FunctionalTheme = OpenClawTray.FunctionalUI.Core.Theme;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Chat;
@@ -41,6 +43,21 @@ internal static class ChatMarkdownPresentation
                 UnwatchContrast(control);
                 s_inlineStyling.Remove((Border)control);
             });
+
+    internal static Element Disclosures(
+        IReadOnlyList<ChatMarkdownPart> parts, Func<string, Element> renderMarkdown)
+    {
+        if (parts is [ChatMarkdownText markdown])
+            return renderMarkdown(markdown.Text);
+        return VStack(ChatVisuals.BlockGap, parts.Select((part, index) => part switch
+        {
+            ChatMarkdownText text => renderMarkdown(text.Text),
+            ChatMarkdownDisclosure disclosure =>
+                Component<ChatMarkdownDisclosureView, ChatMarkdownDisclosureProps>(
+                    new(disclosure, renderMarkdown)).WithKey($"disclosure:{index}"),
+            _ => throw new InvalidOperationException("Unknown chat Markdown part."),
+        }).ToArray());
+    }
 
     private sealed record InlineStylingState(bool Compact);
 
@@ -85,13 +102,18 @@ internal static class ChatMarkdownPresentation
     /// <summary>Restyles every mounted Markdown and code surface on its own UI thread.</summary>
     internal static void RefreshAfterContrastChange() => ChatThemeChanges.Refresh();
 
-    private static void StyleInlines(DependencyObject root, bool compactSecondaryReading)
+    private static void StyleInlines(DependencyObject root, bool compactSecondaryReading, bool quoted = false)
     {
+        quoted |= root is FrameworkElement element && s_quotes.TryGetValue(element, out _);
         if (root is RichTextBlock rich)
         {
-            // Fenced code owns its syntax highlighters; see ApplyCodeSyntax.
+            // Fenced code owns its syntax highlighters; see ApplyCodeSyntax. Only its font follows the theme here.
             if (IsCodeText(rich))
+            {
+                ChatVisuals.ApplyCodeFont(rich);
                 return;
+            }
+            ChatVisuals.ApplyBodyFont(rich);
             // Tight list items and table cells bypass the Paragraph hook; give them the prose tone.
             if (!compactSecondaryReading && rich.Style is null)
             {
@@ -106,9 +128,31 @@ internal static class ChatMarkdownPresentation
                 rich.LineHeight = ChatVisuals.ReasoningLineHeight;
                 rich.LineStackingStrategy = LineStackingStrategy.MaxHeight;
             }
-            StyleRichText(rich, compactSecondaryReading);
+            var muted = quoted && !IsHighContrast()
+                ? ThemeRef.Resolve("ChatMutedTextBrush", rich.ActualTheme == ElementTheme.Dark) as Brush
+                : null;
+            if (muted is not null)
+            {
+                rich.Foreground = muted;
+                s_quotedText.AddOrUpdate(rich, s_quotedText);
+            }
+            else if (s_quotedText.TryGetValue(rich, out _))
+            {
+                // Pooled controls can move out of a quote; drop the quote tone we set.
+                rich.ClearValue(Microsoft.UI.Xaml.Controls.RichTextBlock.ForegroundProperty);
+                s_quotedText.Remove(rich);
+            }
+            StyleRichText(rich, compactSecondaryReading, muted);
             return;
         }
+        // Code labels carry the code font, and list markers, disclosure headers and inert labels the body font,
+        // locally; both follow theme switches.
+        // A body font is still required locally, so a pooled TextBlock reused for an icon glyph keeps its icon font.
+        if (root is TextBlock codeText && IsCodeText(codeText))
+            ChatVisuals.ApplyCodeFont(codeText);
+        else if (root is TextBlock bodyText &&
+            ChatVisuals.IsBodyFont(bodyText.ReadLocalValue(Microsoft.UI.Xaml.Controls.TextBlock.FontFamilyProperty) as FontFamily))
+            ChatVisuals.ApplyBodyFont(bodyText);
         if (root is TextBlock text && compactSecondaryReading && !IsCodeText(text))
         {
             ChatVisuals.StyleSecondaryText(text);
@@ -117,18 +161,26 @@ internal static class ChatMarkdownPresentation
             text.LineStackingStrategy = LineStackingStrategy.MaxHeight;
         }
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
-            StyleInlines(VisualTreeHelper.GetChild(root, index), compactSecondaryReading);
+            StyleInlines(VisualTreeHelper.GetChild(root, index), compactSecondaryReading, quoted);
     }
 
-    private static bool IsCodeText(FrameworkElement element) =>
-        element switch
+    // Text given the code or body font here keeps that role, because a plugin or imported theme may use one font
+    // stack for both. Other text falls back to its local font (prose may inherit a monospace theme font, so only the
+    // local value counts), and a font that served as both is prose.
+    private static bool IsCodeText(FrameworkElement element)
+    {
+        if (ChatVisuals.HasCodeRole(element) is { } code)
+            return code;
+        var local = element switch
         {
-            TextBlock text => text.FontFamily?.Source.Equals(ChatVisuals.CodeFontFamily, StringComparison.OrdinalIgnoreCase) == true,
-            RichTextBlock rich => rich.FontFamily?.Source.Equals(ChatVisuals.CodeFontFamily, StringComparison.OrdinalIgnoreCase) == true,
-            _ => false,
-        };
+            TextBlock text => text.ReadLocalValue(Microsoft.UI.Xaml.Controls.TextBlock.FontFamilyProperty),
+            RichTextBlock rich => rich.ReadLocalValue(Microsoft.UI.Xaml.Controls.RichTextBlock.FontFamilyProperty),
+            _ => null,
+        } as FontFamily;
+        return ChatVisuals.IsCodeFont(local) && !ChatVisuals.IsBodyFont(local);
+    }
 
-    private static void StyleRichText(RichTextBlock rich, bool compactSecondaryReading)
+    private static void StyleRichText(RichTextBlock rich, bool compactSecondaryReading, Brush? quoteText)
     {
         var codeRanges = new List<Microsoft.UI.Xaml.Documents.TextRange>();
         var strongCodeRanges = new List<Microsoft.UI.Xaml.Documents.TextRange>();
@@ -166,8 +218,11 @@ internal static class ChatMarkdownPresentation
                         // Only Reactor's inline-code runs set the code font locally;
                         // fenced code blocks inherit it from their own text block.
                         if (length > 0 &&
-                            run.ReadLocalValue(Microsoft.UI.Xaml.Documents.TextElement.FontFamilyProperty) is FontFamily { Source: ChatVisuals.CodeFontFamily })
+                            ChatVisuals.IsCodeFont(run.ReadLocalValue(Microsoft.UI.Xaml.Documents.TextElement.FontFamilyProperty) as FontFamily))
+                        {
+                            ChatVisuals.ApplyCodeFont(run);
                             (strongRun ? strongCodeRanges : codeRanges).Add(new() { StartIndex = offset, Length = length });
+                        }
                         else if (length > 0 && strongRun && !link && !compactSecondaryReading)
                             strongRanges.Add(new() { StartIndex = offset, Length = length });
                         offset += length;
@@ -183,14 +238,28 @@ internal static class ChatMarkdownPresentation
         if (codeRanges.Count + strongCodeRanges.Count + strongRanges.Count == 0 || IsHighContrast())
             return;
         // Prose and strong text share the primary tone (strong keeps its weight); inline
-        // code keeps its surrounding tone on a subtle chip.
+        // code keeps its surrounding tone on a subtle chip, which a Gateway theme paints with its InlineCode color.
         var isDark = rich.ActualTheme == ElementTheme.Dark;
-        if (ThemeRef.Resolve("ControlFillColorSecondaryBrush", isDark) is not Brush chip ||
-            ThemeRef.Resolve("SubtleFillColorTransparentBrush", isDark) is not Brush clear ||
+        if (ThemeRef.Resolve("SubtleFillColorTransparentBrush", isDark) is not Brush clear ||
             ThemeRef.Resolve("TextFillColorPrimaryBrush", isDark) is not Brush strongText ||
             ThemeRef.Resolve("TextFillColorPrimaryBrush", isDark) is not Brush proseText)
             return;
+        // Quoted strong text and code keep the quote's muted tone, as on the web: strong text
+        // inherits the quote foreground directly, so it gets no tone highlighter of its own.
+        if (quoteText is not null)
+        {
+            strongText = proseText = quoteText;
+            strongRanges.Clear();
+        }
         AddHighlighter(strongRanges, clear, strongText);
+        if (codeRanges.Count == 0 && strongCodeRanges.Count == 0)
+            return;
+
+        // A Gateway theme's InlineCode color wins; otherwise resolve the Fluent chip for the mounted chat's own mode,
+        // because the application brush can carry the opposite palette.
+        var chip = new SolidColorBrush(ChatVisuals.ThemeInlineCode(isDark) is { } themed
+            ? themed
+            : FunctionalTheme.ResolveColor("ControlFillColorSecondary", rich.ActualTheme));
         AddHighlighter(codeRanges, chip, proseText);
         AddHighlighter(strongCodeRanges, chip, strongText);
 
@@ -217,10 +286,43 @@ internal static class ChatMarkdownPresentation
                 // Compact thinking text keeps its tighter pre-web rhythm.
                 Spacing = compactSecondaryReading ? ChatVisuals.BlockGap : ChatVisuals.MessageBlockGap,
                 Children = stack.Children
-                    .Select((child, index) => ResetBlockEdges(child, index == 0 || compactSecondaryReading))
+                    .Select((child, index) => ResetBlockEdges(StyleNestedTables(child), index == 0 || compactSecondaryReading))
                     .ToArray(),
             }
             : element;
+
+    private static Element StyleNestedTables(Element element)
+    {
+        switch (element)
+        {
+            case StackElement stack:
+                var stackChildren = StyleNestedTables(stack.Children);
+                return stackChildren is null ? stack : stack with { Children = stackChildren };
+            case GridElement grid:
+                var gridChildren = StyleNestedTables(grid.Children);
+                return Table(gridChildren is null ? grid : grid with { Children = gridChildren });
+            case BorderElement { Child: { } child } border:
+                var styledChild = StyleNestedTables(child);
+                return ReferenceEquals(child, styledChild) ? border : border with { Child = styledChild };
+            default:
+                return element;
+        }
+    }
+
+    private static Element[]? StyleNestedTables(IReadOnlyList<Element> children)
+    {
+        Element[]? styledChildren = null;
+        for (var index = 0; index < children.Count; index++)
+        {
+            var child = children[index];
+            var styledChild = StyleNestedTables(child);
+            if (ReferenceEquals(child, styledChild))
+                continue;
+            styledChildren ??= children.ToArray();
+            styledChildren[index] = styledChild;
+        }
+        return styledChildren;
+    }
 
     // The first and last blocks add no outer gap; only later headings keep their extra lead-in.
     private static Element ResetBlockEdges(Element element, bool dropTop)
@@ -253,16 +355,11 @@ internal static class ChatMarkdownPresentation
     {
         if (row is not GridElement { Children: [TextBlockElement marker, var content] } grid)
             return row;
-        var style = compactSecondaryReading || !marker.Content.StartsWith('\u2022')
-            ? "ChatSecondaryTextStyle"
-            : "ChatMutedTextStyle";
         var column = (marker with { TextAlignment = TextAlignment.Right })
+            .FontFamily(ChatVisuals.BodyFontFamily)
             .MinWidth(ChatVisuals.ListMarkerColumn)
-            .Set(text =>
-            {
-                text.Style = (Style)Application.Current.Resources[style];
-                text.ClearValue(Microsoft.UI.Xaml.Controls.TextBlock.ForegroundProperty);
-            });
+            .Set(text => StyleListMarker(text, compactSecondaryReading))
+            .OnUnmountAdd(ChatVisuals.ClearFontRole);
         if (!compactSecondaryReading && content is RichTextBlockElement rich && !s_headings.TryGetValue(content, out _))
         {
             var prose = (Style)Application.Current.Resources["ChatProseRichTextStyle"];
@@ -271,11 +368,97 @@ internal static class ChatMarkdownPresentation
         return grid with { Children = [column, content] };
     }
 
+    private static void StyleListMarker(TextBlock text, bool compactSecondaryReading)
+    {
+        var marker = text.Text ?? string.Empty;
+        ChatVisuals.ApplyBodyFont(text);
+        var style = compactSecondaryReading || !marker.StartsWith('\u2022')
+            ? "ChatSecondaryTextStyle"
+            : "ChatMutedTextStyle";
+        text.Style = (Style)Application.Current.Resources[style];
+        text.ClearValue(Microsoft.UI.Xaml.Controls.TextBlock.ForegroundProperty);
+        // Task boxes: the body font lacks U+2610/U+2611, and its fallback draws the checked box
+        // as a color emoji. Segoe UI Symbol keeps both states monochrome and the same size.
+        if (marker.StartsWith('\u2610') || marker.StartsWith('\u2611'))
+            text.FontFamily = new FontFamily(ChatVisuals.TaskMarkerFontFamily);
+    }
+
     internal static Element ThematicBreak() =>
         Border(Empty())
             .Height(1)
             .Background(Theme.Ref("DividerStrokeColorDefaultBrush"))
             .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+
+    // Quote containers mounted by BlockQuote, and quoted text that StyleInlines toned.
+    private static readonly ConditionalWeakTable<FrameworkElement, object> s_quotes = new();
+    private static readonly ConditionalWeakTable<RichTextBlock, object> s_quotedText = new();
+
+    /// <summary>
+    /// Web-parity block quote: Reactor's filled box becomes unfilled content beside a rounded
+    /// strong-stroke bar. The inline styling pass gives the quoted text its muted tone.
+    /// </summary>
+    internal static Element BlockQuote(Element quote)
+    {
+        if (quote is not BorderElement { Child: { } content })
+            return quote;
+        return Grid(
+                [GridSize.Auto, GridSize.Star()],
+                [GridSize.Auto],
+                Border(Empty())
+                    .Width(ChatVisuals.QuoteBarWidth)
+                    .CornerRadius(ChatVisuals.QuoteBarWidth / 2)
+                    .Margin(0, ChatVisuals.QuoteBarInset, 0, ChatVisuals.QuoteBarInset)
+                    .Background(Theme.Ref("ControlStrongStrokeColorDefaultBrush"))
+                    .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+                    .Grid(column: 0),
+                content
+                    .Margin(ChatVisuals.QuoteHorizontalInset - ChatVisuals.QuoteBarWidth,
+                        ChatVisuals.QuoteVerticalInset, ChatVisuals.QuoteHorizontalInset,
+                        ChatVisuals.QuoteVerticalInset)
+                    .Grid(column: 1))
+            .Set(grid => s_quotes.AddOrUpdate(grid, s_quotes))
+            .OnUnmountAdd(control => s_quotes.Remove((FrameworkElement)control));
+    }
+
+    /// <summary>
+    /// Web-parity table: Reactor's message-level table grid (Auto rows, Star columns, so long cells
+    /// keep wrapping at narrow widths) gets a rounded frame, 1px cell rules and a tinted header row.
+    /// Reactor's Table hook only receives rows with TextSelection enabled, so the built grid is
+    /// restyled instead; the recursive element pass applies this to tables nested in lists or quotes.
+    /// </summary>
+    private static Element Table(Element block)
+    {
+        if (block is not GridElement { Definition: { Rows.Length: > 0 } definition } grid ||
+            definition.Columns.Any(column => column.Type != GridUnitType.Star))
+            return block;
+        var columns = definition.Columns.Length;
+        var rows = definition.Rows.Length;
+        var stroke = Theme.Ref("ChatStrokeBrush");
+        // GFM tables always start with exactly one header row.
+        Element header = Border(Empty())
+            .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
+            .ThemedCorner(() =>
+            {
+                var inner = Math.Max(0, ChatVisuals.TableRadius - 1);
+                return new CornerRadius(inner, inner, 0, 0);
+            })
+            .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+            .Grid(row: 0, column: 0, columnSpan: columns);
+        var cells = grid.Children.Select(cell =>
+        {
+            var at = cell.Attached?.GetValueOrDefault(typeof(GridAttached)) as GridAttached ?? new GridAttached();
+            return (Element)Border(cell)
+                .BorderBrush(stroke)
+                .BorderThickness(0, 0, at.Column == columns - 1 ? 0 : 1, at.Row == rows - 1 ? 0 : 1)
+                .Grid(row: at.Row, column: at.Column);
+        });
+        var frame = (BorderElement)Border(grid with { Children = [header, .. cells] })
+            .ThemedCorner(() => ChatVisuals.TableRadius)
+            .BorderThickness(1)
+            .BorderBrush(stroke)
+            .Background(Theme.Ref("ChatCardBrush"));
+        return frame with { Attached = grid.Attached };
+    }
 
     private static Element Format(Element element, double size, bool heading)
     {
@@ -283,13 +466,18 @@ internal static class ChatMarkdownPresentation
         {
             return (rich with
             {
+                FontFamily = new FontFamily(ChatVisuals.BodyFontFamily),
                 FontSize = size,
                 FontWeight = heading ? FontWeights.SemiBold : FontWeights.Normal,
                 LineHeight = heading ? size * 1.4 : ChatVisuals.BodyLineHeight,
                 LineStackingStrategy = LineStackingStrategy.MaxHeight,
             })
-                .Set(text => text.Style = (Style)Application.Current.Resources[
-                    heading ? "ChatRichTextStyle" : "ChatProseRichTextStyle"])
+                .Set(text =>
+                {
+                    text.Style = (Style)Application.Current.Resources[heading ? "ChatRichTextStyle" : "ChatProseRichTextStyle"];
+                    ChatVisuals.ApplyBodyFont(text);
+                })
+                .OnUnmountAdd(ChatVisuals.ClearFontRole)
                 .Margin(0, heading ? ChatVisuals.HeadingTopInset : 0, 0, 0);
         }
         return element.Margin(0, 0, 0, 0);
@@ -301,6 +489,32 @@ internal static class ChatMarkdownPresentation
         var label = string.IsNullOrWhiteSpace(language)
             ? Localized("Chat_Code_LanguageFallback", "code")
             : language.ToLowerInvariant();
+        var codeBody = (RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize })
+            .Set(text =>
+            {
+                text.Style = (Style)Application.Current.Resources["ChatCodeTextStyle"];
+                ChatVisuals.ApplyCodeFont(text);
+                text.LineHeight = ChatVisuals.CodeLineHeight;
+                text.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+                text.IsTextSelectionEnabled = true;
+                text.TextWrapping = TextWrapping.NoWrap;
+                ApplyCodeSyntax(text, code, language);
+            })
+            .OnMountAdd(control =>
+            {
+                control.Loaded += OnCodeLoaded;
+                control.ActualThemeChanged += OnCodeThemeChanged;
+                WatchContrast(control);
+            })
+            .OnUnmountAdd(control =>
+            {
+                control.Loaded -= OnCodeLoaded;
+                control.ActualThemeChanged -= OnCodeThemeChanged;
+                UnwatchContrast(control);
+                ClearCodeSyntax((RichTextBlock)control);
+                ChatVisuals.ClearFontRole(control);
+            })
+            .Margin(ChatVisuals.CodeInset - 6, 0, ChatVisuals.CodeInset - 6, ChatVisuals.CodeInset - 6);
         return Border(VStack(
                 0,
                 Grid(
@@ -309,6 +523,8 @@ internal static class ChatMarkdownPresentation
                     TextBlock(label)
                         .FontSize(ChatVisuals.CodeLabelSize)
                         .FontFamily(ChatVisuals.CodeFontFamily)
+                        .Set(text => ChatVisuals.ApplyCodeFont(text))
+                        .OnUnmountAdd(ChatVisuals.ClearFontRole)
                         .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                         .TextTrimming(TextTrimming.CharacterEllipsis)
                         .VAlign(VerticalAlignment.Center)
@@ -319,31 +535,7 @@ internal static class ChatMarkdownPresentation
                         .Grid(column: 1))
                     .Margin(ChatVisuals.CodeInset, ChatVisuals.CodeHeaderTopInset,
                         ChatVisuals.CodeHeaderTrailingInset, ChatVisuals.CodeHeaderBottomInset),
-                ScrollViewer((RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize })
-                        .Set(text =>
-                        {
-                            text.Style = (Style)Application.Current.Resources["ChatCodeTextStyle"];
-                            text.FontFamily = new FontFamily(ChatVisuals.CodeFontFamily);
-                            text.LineHeight = ChatVisuals.CodeLineHeight;
-                            text.LineStackingStrategy = LineStackingStrategy.MaxHeight;
-                            text.IsTextSelectionEnabled = true;
-                            text.TextWrapping = TextWrapping.NoWrap;
-                            ApplyCodeSyntax(text, code, language);
-                        })
-                        .OnMountAdd(control =>
-                        {
-                            control.Loaded += OnCodeLoaded;
-                            control.ActualThemeChanged += OnCodeThemeChanged;
-                            WatchContrast(control);
-                        })
-                        .OnUnmountAdd(control =>
-                        {
-                            control.Loaded -= OnCodeLoaded;
-                            control.ActualThemeChanged -= OnCodeThemeChanged;
-                            UnwatchContrast(control);
-                            ClearCodeSyntax((RichTextBlock)control);
-                        })
-                        .Margin(ChatVisuals.CodeInset - 6, 0, ChatVisuals.CodeInset - 6, ChatVisuals.CodeInset - 6))
+                ScrollViewer(codeBody)
                     .MaxHeight(320)
                     .Margin(6, 0, 6, 6)
                     .Set(scroll =>
@@ -352,7 +544,7 @@ internal static class ChatMarkdownPresentation
                         scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
                         scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
                     })))
-            .CornerRadius(ChatVisuals.CodeRadius)
+            .ThemedCorner(() => ChatVisuals.CodeRadius)
             .BorderThickness(1)
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .Background(Theme.Ref("ChatCardBrush"))
@@ -461,5 +653,45 @@ internal static class ChatMarkdownPresentation
     {
         var value = LocalizationHelper.GetString(key);
         return string.IsNullOrWhiteSpace(value) || value == key ? fallback : value;
+    }
+}
+
+internal sealed record ChatMarkdownProps(string? Text, Func<string, bool>? TryCopyCode, bool CompactSecondaryReading);
+
+/// <summary>Mount through ReactorChatTimeline.BuildSafeMarkdown.</summary>
+internal sealed class ChatMarkdownView : Component<ChatMarkdownProps>
+{
+    public override Element Render() =>
+        ReactorChatTimeline.RenderSafeMarkdown(Props.Text, Props.TryCopyCode, Props.CompactSecondaryReading);
+}
+
+internal sealed record ChatMarkdownDisclosureProps(
+    ChatMarkdownDisclosure Disclosure, Func<string, Element> RenderMarkdown);
+
+internal sealed class ChatMarkdownDisclosureView : Component<ChatMarkdownDisclosureProps>
+{
+    public override Element Render()
+    {
+        var disclosure = Props.Disclosure;
+        var (expanded, setExpanded) = UseState(disclosure.InitiallyExpanded);
+        return (Expander(
+                disclosure.Summary,
+                ChatMarkdownPresentation.Disclosures(disclosure.Body, Props.RenderMarkdown)
+                    .Margin(ChatVisuals.ToolRowTitleInset, 4, 0, 8),
+                expanded,
+                setExpanded) with
+            {
+                HeaderContent = ToolCallCardRenderer.BuildDisclosureHeader(expanded,
+                    TextBlock(disclosure.Summary).TextWrapping(TextWrapping.Wrap)
+                        .FontFamily(ChatVisuals.BodyFontFamily)),
+            })
+            .Padding(0)
+            .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Resources(ChatVisuals.ToolRowExpanderResources)
+            .Set(ChatVisuals.FlushToolRowExpander)
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationName(disclosure.Summary);
     }
 }

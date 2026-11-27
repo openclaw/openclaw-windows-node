@@ -2,6 +2,7 @@
 <Page x:Class="OpenClawTray.Pages.PermissionsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:presentation="using:OpenClawTray.Presentation"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
 
     <Page.Resources>
@@ -9,7 +10,7 @@
     </Page.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
+        <StackPanel presentation:PageContentLayout.IsEnabled="True" Spacing="4">
 
             <!-- ───────── Page header ───────── -->
             <TextBlock x:Uid="PermissionsPage_Permissions" Text="Permissions"
@@ -31,58 +32,42 @@
                        TextWrapping="Wrap" Margin="0,0,0,8"/>
 
             <!-- ═════════ Node Mode + Node Status ═════════ -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8"
-                    Padding="16"
-                    AutomationProperties.AutomationId="NodeStatusCard">
-                <StackPanel Spacing="12">
-                    <!-- Node Mode master toggle row -->
-                    <Grid ColumnSpacing="14">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="36"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <FontIcon Grid.Column="0" Glyph="&#xE839;" FontSize="22"
-                                  VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock x:Uid="PermissionsPage_NodeMode" Text="Node mode"
-                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <TextBlock x:Uid="PermissionsPage_WhenOnThisPC" Text="When on, this PC registers as a node and offers the capabilities below to agents over the gateway."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
-                        <ToggleSwitch Grid.Column="2" x:Name="NodeModeToggle"
-                                      MinWidth="0" OnContent="" OffContent=""
-                                      Toggled="OnNodeModeToggled"
-                                      AutomationProperties.AutomationId="CapabilitiesNodeModeToggle"
-                                      AutomationProperties.Name="Node mode"/>
-                    </Grid>
+            <toolkit:SettingsCard x:Name="NodeModeCard">
+                <toolkit:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE839;" AutomationProperties.AccessibilityView="Raw"/>
+                </toolkit:SettingsCard.HeaderIcon>
+                <toolkit:SettingsCard.Header>
+                    <TextBlock x:Uid="PermissionsPage_NodeMode" Text="Node mode"/>
+                </toolkit:SettingsCard.Header>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Uid="PermissionsPage_WhenOnThisPC" Text="When on, this PC registers as a node and offers the capabilities below to agents over the gateway."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </toolkit:SettingsCard.Description>
+                <ToggleSwitch x:Name="NodeModeToggle"
+                              MinWidth="0" OnContent="" OffContent=""
+                              Toggled="OnNodeModeToggled"
+                              AutomationProperties.AutomationId="CapabilitiesNodeModeToggle"
+                              AutomationProperties.Name="Node mode"/>
+            </toolkit:SettingsCard>
 
-                    <!-- Subtle divider between master switch and status sub-row -->
-                    <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
-
-                    <!-- Live status sub-row -->
-                    <Grid ColumnSpacing="14">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="36"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Ellipse Grid.Column="0" x:Name="NodeStatusDot" Width="12" Height="12"
-                                 Fill="Gray" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock x:Uid="NodeStatusText" x:Name="NodeStatusText" Text="Node mode disabled"
-                                       Style="{StaticResource BodyTextBlockStyle}"/>
-                            <TextBlock x:Name="NodeDetailsText"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Grid>
-                </StackPanel>
-            </Border>
+            <toolkit:SettingsCard AutomationProperties.AutomationId="NodeStatusCard">
+                <toolkit:SettingsCard.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Ellipse x:Name="NodeStatusDot" Width="10" Height="10"
+                                 Fill="Gray" VerticalAlignment="Center"
+                                 AutomationProperties.AccessibilityView="Raw"/>
+                        <TextBlock x:Uid="NodeStatusText" x:Name="NodeStatusText" Text="Node mode disabled"/>
+                    </StackPanel>
+                </toolkit:SettingsCard.Header>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Name="NodeDetailsText"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </toolkit:SettingsCard.Description>
+            </toolkit:SettingsCard>
 
             <!-- ═════════ Capability features ═════════ -->
             <TextBlock x:Uid="PermissionsPage_Capabilities" x:Name="FeaturesSectionHeader" Text="Capabilities" Style="{StaticResource BodyStrongTextBlockStyle}"
@@ -93,20 +78,25 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="Wrap" Margin="4,0,4,4"/>
 
-            <!-- Capability rows are built in code-behind so each gets icon + name + description + toggle. -->
+            <!-- Capability rows are built in code-behind as SettingsCards (label, description, toggle). -->
             <ItemsRepeater x:Name="CapabilityRepeater">
                 <ItemsRepeater.Layout>
-                    <StackLayout Spacing="8"/>
+                    <StackLayout Spacing="4"/>
                 </ItemsRepeater.Layout>
             </ItemsRepeater>
 
             <!-- ═════════ Voice settings link (only when STT or TTS capability is on) ═════════ -->
-            <Border x:Name="VoiceSettingsCard" Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16,10,16,12" Margin="0,-4,0,0"
-                    Visibility="Collapsed"
-                    AutomationProperties.AutomationId="PermissionsVoiceSettingsCard">
-                <StackPanel Spacing="6">
+            <toolkit:SettingsCard x:Name="VoiceSettingsCard"
+                                  Visibility="Collapsed"
+                                  AutomationProperties.AutomationId="PermissionsVoiceSettingsCard">
+                <toolkit:SettingsCard.Header>
+                    <HyperlinkButton x:Name="VoiceSettingsLink"
+                                     x:Uid="PermissionsPage_VoiceSettingsLink"
+                                     Content="Voice &amp; Audio settings"
+                                     Click="OnVoiceSettingsClick"
+                                     Padding="0"/>
+                </toolkit:SettingsCard.Header>
+                <toolkit:SettingsCard.Description>
                     <StackPanel x:Name="VoiceSettingsHelpPanel"
                                 Orientation="Horizontal"
                                 Spacing="8"
@@ -124,13 +114,8 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
-                    <HyperlinkButton x:Name="VoiceSettingsLink"
-                                     x:Uid="PermissionsPage_VoiceSettingsLink"
-                                     Content="Voice &amp; Audio settings"
-                                     Click="OnVoiceSettingsClick"
-                                     Padding="0"/>
-                </StackPanel>
-            </Border>
+                </toolkit:SettingsCard.Description>
+            </toolkit:SettingsCard>
 
             <!-- ═════════ App access consent ═════════ -->
             <TextBlock x:Uid="PermissionsPage_AppAccess" Text="App access"
@@ -144,118 +129,102 @@
 
             <toolkit:SettingsCard AutomationProperties.AutomationId="AppAccessScreenCaptureCard">
                 <toolkit:SettingsCard.Header>
-                    <StackPanel Spacing="4">
-                        <TextBlock x:Uid="SettingsRow_ScreenRec_Header"
-                                   Text="Allow screen capture"
-                                   Style="{StaticResource BodyTextBlockStyle}"/>
-                        <TextBlock x:Uid="SettingsRow_ScreenRec_Description"
-                                   Text="Lets agents capture the screen via screen.* commands."
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
+                    <TextBlock x:Uid="SettingsRow_ScreenRec_Header" Text="Allow screen capture"/>
                 </toolkit:SettingsCard.Header>
-                <toolkit:SettingsCard.Content>
-                    <ToggleSwitch x:Name="ScreenRecordingToggle" MinWidth="0" OnContent="" OffContent=""
-                                  IsOn="{Binding ScreenRecordingConsentGiven, Mode=TwoWay}"
-                                  AutomationProperties.AutomationId="SettingsPageScreenRecording"
-                                  AutomationProperties.Name="Allow screen capture"/>
-                </toolkit:SettingsCard.Content>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Uid="SettingsRow_ScreenRec_Description"
+                               Text="Lets agents capture the screen via screen.* commands."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </toolkit:SettingsCard.Description>
+                <ToggleSwitch x:Name="ScreenRecordingToggle" MinWidth="0" OnContent="" OffContent=""
+                              IsOn="{Binding ScreenRecordingConsentGiven, Mode=TwoWay}"
+                              AutomationProperties.AutomationId="SettingsPageScreenRecording"
+                              AutomationProperties.Name="Allow screen capture"/>
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard AutomationProperties.AutomationId="AppAccessCameraCaptureCard">
                 <toolkit:SettingsCard.Header>
-                    <StackPanel Spacing="4">
-                        <TextBlock x:Uid="SettingsRow_CamRec_Header"
-                                   Text="Allow camera capture"
-                                   Style="{StaticResource BodyTextBlockStyle}"/>
-                        <TextBlock x:Uid="SettingsRow_CamRec_Description"
-                                   Text="Lets agents capture the camera via camera.* commands."
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
+                    <TextBlock x:Uid="SettingsRow_CamRec_Header" Text="Allow camera capture"/>
                 </toolkit:SettingsCard.Header>
-                <toolkit:SettingsCard.Content>
-                    <ToggleSwitch x:Name="CameraRecordingToggle" MinWidth="0" OnContent="" OffContent=""
-                                  IsOn="{Binding CameraRecordingConsentGiven, Mode=TwoWay}"
-                                  AutomationProperties.AutomationId="SettingsPageCameraRecording"
-                                  AutomationProperties.Name="Allow camera capture"/>
-                </toolkit:SettingsCard.Content>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Uid="SettingsRow_CamRec_Description"
+                               Text="Lets agents capture the camera via camera.* commands."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </toolkit:SettingsCard.Description>
+                <ToggleSwitch x:Name="CameraRecordingToggle" MinWidth="0" OnContent="" OffContent=""
+                              IsOn="{Binding CameraRecordingConsentGiven, Mode=TwoWay}"
+                              AutomationProperties.AutomationId="SettingsPageCameraRecording"
+                              AutomationProperties.Name="Allow camera capture"/>
             </toolkit:SettingsCard>
 
             <toolkit:SettingsCard AutomationProperties.AutomationId="AppAccessLocationCard">
                 <toolkit:SettingsCard.Header>
-                    <StackPanel Spacing="4">
-                        <TextBlock x:Uid="SettingsRow_Location_Header"
-                                   Text="Allow location access"
-                                   Style="{StaticResource BodyTextBlockStyle}"/>
-                        <TextBlock x:Uid="SettingsRow_Location_Description"
-                                   Text="Lets agents read device location via location.* commands."
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
+                    <TextBlock x:Uid="SettingsRow_Location_Header" Text="Allow location access"/>
                 </toolkit:SettingsCard.Header>
-                <toolkit:SettingsCard.Content>
-                    <ToggleSwitch x:Name="LocationConsentToggle" MinWidth="0" OnContent="" OffContent=""
-                                  IsOn="{Binding LocationConsentGiven, Mode=TwoWay}"
-                                  AutomationProperties.AutomationId="SettingsPageLocationConsent"
-                                  AutomationProperties.Name="Allow location access"/>
-                </toolkit:SettingsCard.Content>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Uid="SettingsRow_Location_Description"
+                               Text="Lets agents read device location via location.* commands."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </toolkit:SettingsCard.Description>
+                <ToggleSwitch x:Name="LocationConsentToggle" MinWidth="0" OnContent="" OffContent=""
+                              IsOn="{Binding LocationConsentGiven, Mode=TwoWay}"
+                              AutomationProperties.AutomationId="SettingsPageLocationConsent"
+                              AutomationProperties.Name="Allow location access"/>
             </toolkit:SettingsCard>
 
             <!-- ═════════ Integrations ═════════ -->
             <TextBlock x:Uid="PermissionsPage_Integrations" Text="Integrations" Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="{StaticResource PermSectionHeaderMargin}"/>
 
-            <Border x:Name="McpCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
-                <StackPanel Spacing="10">
-                    <Grid ColumnSpacing="14">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="36"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <FontIcon Grid.Column="0" Glyph="&#xE968;" FontSize="20" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock x:Uid="PermissionsPage_McpHeader" Text="Local MCP Server"
-                                       Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <TextBlock x:Uid="PermissionsPage_McpDescription"
-                                       Text="Serves capabilities to local MCP clients (CLI tools, integrations) on this PC over HTTP."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
-                        <ToggleSwitch Grid.Column="2" x:Name="McpToggle" MinWidth="0" OnContent="" OffContent=""
-                                      Toggled="OnMcpToggled"
-                                      AutomationProperties.Name="Local MCP Server"/>
-                    </Grid>
-                    <StackPanel x:Name="McpDetailsPanel" Spacing="8" Visibility="Collapsed" Margin="50,0,0,0">
-                        <Grid ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Uid="PermissionsPage_McpEndpointLabel" Grid.Column="0" Text="Endpoint:" VerticalAlignment="Center"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            <TextBlock x:Name="McpEndpointText" Grid.Column="1" IsTextSelectionEnabled="True"
-                                       VerticalAlignment="Center" FontFamily="Consolas"
-                                       Style="{StaticResource CaptionTextBlockStyle}"/>
-                        </Grid>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button x:Uid="CopyMcpTokenButton" x:Name="CopyMcpTokenButton" Content="Copy token" Click="OnCopyMcpToken"/>
-                            <Button x:Uid="CopyMcpUrlButton" x:Name="CopyMcpUrlButton" Content="Copy URL" Click="OnCopyMcpUrl"/>
-                        </StackPanel>
-                        <TextBlock x:Name="McpStatusText"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </StackPanel>
+                    BorderThickness="1" CornerRadius="8"
+                    presentation:SettingsCardGroup.IsEnabled="True">
+            <StackPanel>
+            <toolkit:SettingsCard x:Name="McpCard">
+                <toolkit:SettingsCard.HeaderIcon>
+                    <FontIcon Glyph="&#xE968;" AutomationProperties.AccessibilityView="Raw"/>
+                </toolkit:SettingsCard.HeaderIcon>
+                <toolkit:SettingsCard.Header>
+                    <TextBlock x:Uid="PermissionsPage_McpHeader" Text="Local MCP Server"/>
+                </toolkit:SettingsCard.Header>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Uid="PermissionsPage_McpDescription"
+                               Text="Serves capabilities to local MCP clients (CLI tools, integrations) on this PC over HTTP."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </toolkit:SettingsCard.Description>
+                <ToggleSwitch x:Name="McpToggle" MinWidth="0" OnContent="" OffContent=""
+                              Toggled="OnMcpToggled"
+                              AutomationProperties.Name="Local MCP Server"/>
+            </toolkit:SettingsCard>
+
+            <toolkit:SettingsCard x:Name="McpDetailsPanel" Visibility="Collapsed">
+                <toolkit:SettingsCard.Header>
+                    <TextBlock x:Uid="PermissionsPage_McpEndpointLabel" Text="Endpoint:"/>
+                </toolkit:SettingsCard.Header>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Name="McpEndpointText" IsTextSelectionEnabled="True"
+                               FontFamily="Consolas" TextWrapping="Wrap"
+                               Style="{StaticResource CaptionTextBlockStyle}"/>
+                </toolkit:SettingsCard.Description>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Uid="CopyMcpTokenButton" x:Name="CopyMcpTokenButton" Content="Copy token" Click="OnCopyMcpToken"/>
+                    <Button x:Uid="CopyMcpUrlButton" x:Name="CopyMcpUrlButton" Content="Copy URL" Click="OnCopyMcpUrl"/>
                 </StackPanel>
+            </toolkit:SettingsCard>
+            </StackPanel>
             </Border>
+            <TextBlock x:Name="McpStatusText" Margin="4,4,4,0" Visibility="Collapsed"
+                       Style="{StaticResource CaptionTextBlockStyle}"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
 
             <!-- ═════════ Exec Policy ═════════ -->
             <TextBlock x:Uid="PermissionsPage_TextBlock_14" Text="Exec policy" Style="{StaticResource BodyStrongTextBlockStyle}"
@@ -266,70 +235,63 @@
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
                        Margin="4,0,4,4"/>
 
-            <!-- Default action — its own row card (matches the Settings row pattern) -->
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16,14,16,14">
-                <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                        <TextBlock x:Uid="PermissionsPage_DefaultAction" Text="Default action" Style="{StaticResource BodyTextBlockStyle}"/>
-                        <TextBlock x:Uid="PermissionsPage_WhatHappensWhenA" Text="What happens when a command doesn't match the executable-path allowlist below."
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
-                    <ComboBox Grid.Column="1" x:Uid="DefaultActionCombo" x:Name="DefaultActionCombo"
-                              MinWidth="140"
-                              SelectionChanged="OnDefaultActionChanged">
-                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_23" Content="Deny" Tag="deny"/>
-                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_24" Content="Allow" Tag="allow"/>
-                        <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_25" Content="Ask" Tag="prompt"/>
-                    </ComboBox>
-                </Grid>
-            </Border>
+                    BorderThickness="1" CornerRadius="8"
+                    presentation:SettingsCardGroup.IsEnabled="True">
+            <StackPanel>
+            <toolkit:SettingsCard>
+                <toolkit:SettingsCard.Header>
+                    <TextBlock x:Uid="PermissionsPage_DefaultAction" x:Name="DefaultActionLabel" Text="Default action"/>
+                </toolkit:SettingsCard.Header>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Uid="PermissionsPage_WhatHappensWhenA" Text="What happens when a command doesn't match the executable-path allowlist below."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </toolkit:SettingsCard.Description>
+                <ComboBox x:Name="DefaultActionCombo"
+                          MinWidth="140"
+                          SelectionChanged="OnDefaultActionChanged"
+                          AutomationProperties.LabeledBy="{Binding ElementName=DefaultActionLabel}">
+                    <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_23" Content="Deny" Tag="deny"/>
+                    <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_24" Content="Allow" Tag="allow"/>
+                    <ComboBoxItem x:Uid="PermissionsPage_ComboBoxItem_25" Content="Ask" Tag="prompt"/>
+                </ComboBox>
+            </toolkit:SettingsCard>
 
-            <!-- Executable-path allowlist card -->
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8">
+            <!-- Executable-path allowlist: heading row, entries, then the add row -->
+            <toolkit:SettingsCard>
+                <toolkit:SettingsCard.Header>
+                    <TextBlock x:Uid="PermissionsPage_TextBlock_28" Text="Executable-path allowlist"/>
+                </toolkit:SettingsCard.Header>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Uid="PermissionsPage_PatternsAreMatchedLeft" Text="Allow Always creates an argument-bound entry for an eligible native .exe command. Entries added here are path-only and can allow matching executables with any arguments. Deny and Ask remain controlled by Default action. Changes save automatically."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </toolkit:SettingsCard.Description>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock x:Uid="PermissionsPage_Saved" x:Name="ExecPolicySavedHint"
+                               Text="Saved"
+                               VerticalAlignment="Center"
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                               Visibility="Collapsed"/>
+                    <Border Background="{ThemeResource UsageCountPillBrush}"
+                            CornerRadius="10" Padding="8,2" MinWidth="24"
+                            VerticalAlignment="Center">
+                        <TextBlock x:Uid="PermissionsPage_0Rules" x:Name="RulesCountBadge" Text="0 entries"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   HorizontalAlignment="Center"/>
+                    </Border>
+                </StackPanel>
+            </toolkit:SettingsCard>
+
+            <!-- A group row: the entries share the exec policy frame instead of drawing their own. -->
+            <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    presentation:SettingsCardGroup.IsRow="True">
                 <StackPanel>
-                    <!-- Card header: title + entry count badge + auto-save hint -->
-                    <Grid Padding="16,12,16,12" ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Spacing="2">
-                            <TextBlock x:Uid="PermissionsPage_TextBlock_28" Text="Executable-path allowlist" Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                            <TextBlock x:Uid="PermissionsPage_PatternsAreMatchedLeft" Text="Allow Always creates an argument-bound entry for an eligible native .exe command. Entries added here are path-only and can allow matching executables with any arguments. Deny and Ask remain controlled by Default action. Changes save automatically."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
-                        <TextBlock x:Uid="PermissionsPage_Saved" Grid.Column="1" x:Name="ExecPolicySavedHint"
-                                   Text="Saved"
-                                   VerticalAlignment="Center"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource SystemFillColorSuccessBrush}"
-                                   Visibility="Collapsed"
-                                   Margin="0,0,8,0"/>
-                        <Border Grid.Column="2"
-                                Background="{ThemeResource ControlAltFillColorSecondaryBrush}"
-                                CornerRadius="10" Padding="10,2"
-                                VerticalAlignment="Center">
-                            <TextBlock x:Uid="PermissionsPage_0Rules" x:Name="RulesCountBadge" Text="0 entries"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        </Border>
-                    </Grid>
-
-                    <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
-
                     <!-- Empty state — visible when there are no allowlist entries -->
                     <TextBlock x:Uid="PermissionsPage_NoRulesYetAdd" x:Name="RulesEmptyState"
                               Text="No executable-path allowlist entries. Approve an eligible native .exe command with Allow Always, or add a path-only pattern such as **/hostname.exe."
@@ -388,35 +350,33 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-
-                    <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}"/>
-
-                    <!-- Add allowlist entry row -->
-                    <Grid Padding="16,12,16,12" ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" Spacing="4">
-                            <TextBox x:Uid="NewRulePattern" x:Name="NewRulePattern"
-                                     PlaceholderText="Executable-path pattern (e.g. **/hostname.exe)"
-                                     FontFamily="Consolas"
-                                     AutomationProperties.AutomationId="NewExecAllowlistPatternTextBox"/>
-                            <TextBlock x:Uid="PermissionsPage_ExecAllowlistPatternValidation"
-                                       x:Name="ExecAllowlistPatternValidation"
-                                       Text="Enter an executable-path pattern such as **/hostname.exe. Basename or command-text patterns such as hostname are invalid."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
-                                       TextWrapping="Wrap"
-                                       Visibility="Collapsed"
-                                       AutomationProperties.AutomationId="ExecAllowlistPatternValidation"
-                                       AutomationProperties.LiveSetting="Assertive"/>
-                        </StackPanel>
-                        <Button Grid.Column="1" x:Uid="PermissionsPage_Button_57" Content="Add entry"
-                                Click="OnAddRule"
-                                AutomationProperties.AutomationId="AddExecAllowlistPatternButton"/>
-                    </Grid>
                 </StackPanel>
+            </Border>
+
+            <!-- Add allowlist entry row -->
+            <toolkit:SettingsCard>
+                <toolkit:SettingsCard.Header>
+                    <StackPanel Spacing="4">
+                        <TextBox x:Uid="NewRulePattern" x:Name="NewRulePattern"
+                                 PlaceholderText="Executable-path pattern (e.g. **/hostname.exe)"
+                                 FontFamily="Consolas"
+                                 AutomationProperties.AutomationId="NewExecAllowlistPatternTextBox"/>
+                        <TextBlock x:Uid="PermissionsPage_ExecAllowlistPatternValidation"
+                                   x:Name="ExecAllowlistPatternValidation"
+                                   Text="Enter an executable-path pattern such as **/hostname.exe. Basename or command-text patterns such as hostname are invalid."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed"
+                                   AutomationProperties.AutomationId="ExecAllowlistPatternValidation"
+                                   AutomationProperties.LiveSetting="Assertive"/>
+                    </StackPanel>
+                </toolkit:SettingsCard.Header>
+                <Button x:Uid="PermissionsPage_Button_57" Content="Add entry"
+                        Click="OnAddRule"
+                        AutomationProperties.AutomationId="AddExecAllowlistPatternButton"/>
+            </toolkit:SettingsCard>
+            </StackPanel>
             </Border>
 
             <!-- ═════════ Node Allowlist (gateway-side, read-only) ═════════ -->
@@ -430,7 +390,7 @@
 
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16">
+                    BorderThickness="1" CornerRadius="4" Padding="16">
                 <StackPanel Spacing="8">
                     <TextBlock x:Uid="AllowlistEmpty" x:Name="AllowlistEmpty"
                                Text="No allowlist data available. Connect to a gateway first."
@@ -448,24 +408,18 @@
             <TextBlock x:Uid="PermissionsPage_WindowsPrivacy" Text="Windows privacy" Style="{StaticResource BodyStrongTextBlockStyle}"
                        Margin="{StaticResource PermSectionHeaderMargin}"/>
 
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1" CornerRadius="8" Padding="16,14,16,14">
-                <Grid ColumnSpacing="14">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                        <TextBlock x:Uid="PermissionsPage_CameraMicrophoneAmpScreen" Text="Camera, microphone &amp; screen access" Style="{StaticResource BodyTextBlockStyle}"/>
-                        <TextBlock x:Uid="PermissionsPage_SystemLevelPrivacyPermissions" Text="System-level privacy permissions are managed by Windows. Open Windows Privacy Settings to grant or revoke OpenClaw access."
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
-                    <Button Grid.Column="1" x:Uid="PermissionsPage_Button_123" Content="Open Windows privacy settings" Click="OnOpenPrivacySettings"/>
-                </Grid>
-            </Border>
+            <toolkit:SettingsCard>
+                <toolkit:SettingsCard.Header>
+                    <TextBlock x:Uid="PermissionsPage_CameraMicrophoneAmpScreen" Text="Camera, microphone &amp; screen access"/>
+                </toolkit:SettingsCard.Header>
+                <toolkit:SettingsCard.Description>
+                    <TextBlock x:Uid="PermissionsPage_SystemLevelPrivacyPermissions" Text="System-level privacy permissions are managed by Windows. Open Windows Privacy Settings to grant or revoke OpenClaw access."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap"/>
+                </toolkit:SettingsCard.Description>
+                <Button x:Uid="PermissionsPage_Button_123" Content="Open Windows privacy settings" Click="OnOpenPrivacySettings"/>
+            </toolkit:SettingsCard>
 
         </StackPanel>
     </ScrollViewer>

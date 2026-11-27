@@ -37,34 +37,29 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <Button x:Name="OwnerButton" Style="{StaticResource SubtleButtonStyle}" Padding="8" HorizontalAlignment="Stretch"
+        <Button x:Name="OwnerButton" Style="{StaticResource SubtleButtonStyle}" Padding="8,4" Height="40" HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch">
             <Grid x:Name="OwnerContent" ColumnSpacing="12">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <Grid Width="24" Height="24" VerticalAlignment="Center">
+                <!-- No explicit size: a sized Grid clips the overhanging status and update dots. -->
+                <Grid VerticalAlignment="Center">
                     <PersonPicture x:Name="OwnerPicture" Width="24" Height="24"
                                    IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
-                    <!-- Rail layout has no status line, so the avatar carries the connection dot. -->
-                    <FontIcon x:Name="OwnerAvatarStatusDot" Style="{StaticResource ConnectionBadgeNeutral}"
-                              HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-3,-3"
-                              Visibility="Collapsed" IsHitTestVisible="False"
-                              AutomationProperties.AccessibilityView="Raw"/>
+                    <Border Width="14" Height="14" CornerRadius="7" BorderThickness="2"
+                            BorderBrush="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+                            HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-3.5,-3.5"
+                            IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
+                        <FontIcon x:Name="OwnerAvatarStatusDot" Style="{StaticResource ConnectionBadgeNeutral}"
+                                  IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
+                    </Border>
                     <!-- A Companion update is available; the account menu's Settings row carries the badge. -->
                     <Ellipse x:Name="OwnerUpdateDot" Width="8" Height="8" Fill="{ThemeResource AccentFillColorDefaultBrush}"
                              HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-2,0"
                              Visibility="Collapsed" IsHitTestVisible="False"
                              AutomationProperties.AccessibilityView="Raw"/>
                 </Grid>
-                <StackPanel x:Name="OwnerText" Grid.Column="1">
+                <StackPanel x:Name="OwnerText" Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock x:Name="OwnerName" TextTrimming="CharacterEllipsis"/>
-                    <Grid ColumnSpacing="4">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <FontIcon x:Name="OwnerStatusDot" Style="{StaticResource ConnectionBadgeNeutral}"
-                                  VerticalAlignment="Center" IsHitTestVisible="False"
-                                  AutomationProperties.AccessibilityView="Raw"/>
-                        <TextBlock x:Name="OwnerDetail" Grid.Column="1" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
-                                   Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                    </Grid>
                 </StackPanel>
             </Grid>
         </Button>

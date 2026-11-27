@@ -18,7 +18,33 @@ public enum NativeGatewayContract
 }
 
 /// <summary>A safe-to-display failure of the qualified Gateway integration contract.</summary>
-public sealed class NativeGatewayContractException(string message) : InvalidOperationException(message);
+/// <param name="awaitingExternalLifecycle">
+/// True only when Companion did not request the current lifecycle change and the package still
+/// reports a non-running state on the selected endpoint (for example an external restart). A later
+/// attempt may observe it again; it never grants credentials or lifecycle ownership.
+/// </param>
+public class NativeGatewayContractException(string message, bool awaitingExternalLifecycle = false)
+    : InvalidOperationException(message)
+{
+    public bool AwaitingExternalLifecycle { get; } = awaitingExternalLifecycle;
+}
+
+/// <summary>
+/// The package reports its Gateway running, but Companion could not verify which listener is its
+/// endpoint: the package does not attest its listeners, or the attested listener on Companion's
+/// port did not answer the Gateway protocol check. Credentials are never sent; the running
+/// service itself is kept.
+/// </summary>
+/// <param name="transient">
+/// True only for an attested listener that did not answer the protocol check in time, which can
+/// recover on its own; a later reconnect re-verifies it without starting or stopping anything.
+/// Unattested listeners need a newer package, so they stay terminal.
+/// </param>
+public sealed class NativeGatewayEndpointUnverifiedException(string message, bool transient = false)
+    : NativeGatewayContractException(message)
+{
+    public bool Transient { get; } = transient;
+}
 
 public sealed record IsolatedGatewayConfiguration(int Port, string Token);
 
@@ -31,6 +57,14 @@ public sealed record IsolatedGatewayLaunch(string AttemptId, string? Disposition
 public sealed class NativeGatewayLaunchOwnershipException(string reason)
     : InvalidOperationException($"The Gateway package refused attempt-owned cleanup ({reason}). No unconditional stop was requested.");
 
+/// <summary>
+/// The caller's deadline or cancellation ended a call that only observed the Gateway: it waited for
+/// the lifecycle gate or for a start Companion did not request, and started nothing to roll back.
+/// It remains an <see cref="OperationCanceledException"/> for every existing caller.
+/// </summary>
+public sealed class NativeGatewayObservationCanceledException(Exception innerException, CancellationToken token)
+    : OperationCanceledException("The native Gateway was still being observed when the caller's deadline ended.", innerException, token);
+
 public sealed record IsolatedGatewayStatus(
     string State,
     int? Port,
@@ -42,6 +76,18 @@ public sealed record IsolatedGatewayStatus(
 {
     public bool SupportsLaunchReceipts { get; init; }
     public IsolatedGatewayLaunch? Launch { get; init; }
+
+    /// <summary>
+    /// Whether the package reports the Gateway running on <paramref name="port"/>. A package that
+    /// cannot name one endpoint among several owned listeners (for example the MCP App sandbox
+    /// beside the Gateway port, or a plugin's loopback proxy opened later) omits
+    /// <see cref="Port"/>; <paramref name="port"/> must then be one
+    /// of the attested listeners, and the caller must still confirm it is the Gateway endpoint.
+    /// Live listener identity is verified separately.
+    /// </summary>
+    public bool IsRunningOn(int port) =>
+        State == "running" &&
+        (Port is int reported ? reported == port : Listeners.Any(listener => listener.Port == port));
 
     /// <summary>Display-safe summary: lifecycle states are validated sets; a reason is kept only when it is a token-shaped code.</summary>
     public string Describe()

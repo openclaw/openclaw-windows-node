@@ -91,9 +91,11 @@ internal static class ChatAssistantContentProjector
         {
             var previous = existing.Media[index];
             var next = incoming.Media[index];
+            // Inline bytes resolve locally, so they always replace a legacy reference.
             if (previous.Kind == next.Kind
                 && previous.Reference.Source == ChatMediaContentSource.LegacyDirective
                 && next.Reference.Source == ChatMediaContentSource.Structured
+                && string.IsNullOrEmpty(next.Reference.InlineDataUrl)
                 && (string.IsNullOrWhiteSpace(next.Reference.FileName)
                     || string.Equals(
                         previous.Reference.FileName,

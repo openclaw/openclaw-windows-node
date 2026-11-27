@@ -109,6 +109,13 @@ public class SettingsManager
 
     // Notifications
     public bool ShowNotifications { get => _data.ShowNotifications; set => _data = _data with { ShowNotifications = value }; }
+    public bool ShowDesktopCompanion { get => _data.ShowDesktopCompanion; set => _data = _data with { ShowDesktopCompanion = value }; }
+    public bool DesktopCompanionOnlyWhenMinimized { get => _data.DesktopCompanionOnlyWhenMinimized; set => _data = _data with { DesktopCompanionOnlyWhenMinimized = value }; }
+    public int DesktopCompanionScalePercent
+    {
+        get => _data.DesktopCompanionScalePercent;
+        set => _data = _data with { DesktopCompanionScalePercent = NormalizeDesktopCompanionScale(value) };
+    }
     public string NotificationSound { get => _data.NotificationSound ?? "Default"; set => _data = _data with { NotificationSound = value }; }
     
     // Notification filters
@@ -139,6 +146,12 @@ public class SettingsManager
     public bool UseLegacyWebChat { get => _data.UseLegacyWebChat; set => _data = _data with { UseLegacyWebChat = value }; }
     public bool ShowCompletedSessions { get => _data.ShowCompletedSessions; set => _data = _data with { ShowCompletedSessions = value }; }
     public string AppTheme { get => NormalizeAppTheme(_data.AppTheme); set => _data = _data with { AppTheme = NormalizeAppTheme(value) }; }
+    /// <summary>Gateway theme and backdrop; the default value is persisted as absent so legacy files stay unchanged.</summary>
+    public OpenClaw.Shared.Themes.AppearanceSettings Appearance
+    {
+        get => _data.Appearance ?? OpenClaw.Shared.Themes.AppearanceSettings.Default;
+        set => _data = _data with { Appearance = value is null || value == OpenClaw.Shared.Themes.AppearanceSettings.Default ? null : value };
+    }
     public bool? ShowDiagnosticsOverride { get => _data.ShowDiagnostics; set => _data = _data with { ShowDiagnostics = value }; }
     public bool ShowDiagnosticsEffective => _data.ShowDiagnostics ?? OpenClawTray.Helpers.DiagnosticsGate.BuildDefault;
     public string OpenTelemetryEndpoint { get => _data.OpenTelemetryEndpoint ?? ""; set => _data = _data with { OpenTelemetryEndpoint = NormalizeOptionalString(value) }; }
@@ -474,6 +487,7 @@ public class SettingsManager
             SshTunnelRemotePort = loaded.SshTunnelRemotePort <= 0 ? defaults.SshTunnelRemotePort : loaded.SshTunnelRemotePort,
             SshTunnelLocalPort = loaded.SshTunnelLocalPort <= 0 ? defaults.SshTunnelLocalPort : loaded.SshTunnelLocalPort,
             NotificationSound = loaded.NotificationSound ?? defaults.NotificationSound,
+            DesktopCompanionScalePercent = NormalizeDesktopCompanionScale(loaded.DesktopCompanionScalePercent),
             SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? defaults.SttLanguage : loaded.SttLanguage,
             SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? defaults.SttModelName : loaded.SttModelName,
             SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : defaults.SttSilenceTimeout,
@@ -666,6 +680,14 @@ public class SettingsManager
         SandboxMaxTransferBytes = SandboxMaxTransferBytes,
         McpOnlyMode = null
     };
+
+    private static int NormalizeDesktopCompanionScale(int value)
+    {
+        var normalized = DesktopCompanionScale.Normalize(value);
+        if (value != normalized)
+            Logger.Warn($"Desktop lobster scale {value}% was adjusted to the supported size {normalized}%.");
+        return normalized;
+    }
 
     public static string NormalizeAppTheme(string? value)
     {

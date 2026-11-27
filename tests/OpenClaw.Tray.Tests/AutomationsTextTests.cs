@@ -314,7 +314,7 @@ public sealed class AutomationsTextTests
     }
 
     [Fact]
-    public void PageHero_OwnsTheHeaderWashWithoutReintroducingTheViewportBackdrop()
+    public void PageHero_RendersAPlainHeaderWithoutAWashCardOrViewportBackdrop()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Automations", "AutomationsRoot.cs"));
@@ -324,9 +324,11 @@ public sealed class AutomationsTextTests
         Assert.Contains("PageHero.SummaryTiles(", page);
         Assert.DoesNotContain("RenderAttention(", page);
         Assert.DoesNotContain("AutomationsBackdrop", page);
-        Assert.Contains("private static Element AccentWash(", helper);
-        Assert.Contains("AccentGradient(native.ActualTheme)", helper);
-        Assert.Contains(".Padding(narrow ? 16 : 24", helper);
+        // Headers are plain (DESIGN.md "Shared non-chat page layout"): no accent wash, card fill or leading icon.
+        Assert.DoesNotContain("AccentWash(", helper);
+        Assert.DoesNotContain("AccentGradient(", helper);
+        Assert.DoesNotContain("PageHeroIcon.Marker(", helper);
+        Assert.DoesNotContain("CardBackgroundFillColorDefaultBrush", helper);
         Assert.DoesNotContain("AutomationsPageWashBrush", helper);
         Assert.DoesNotContain("SeenBadgeEntrances", helper);
         Assert.Contains("badge.Transition(Microsoft.UI.Reactor.Animation.Transition.Fade", helper);
