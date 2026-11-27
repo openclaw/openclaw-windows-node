@@ -63,18 +63,24 @@ internal sealed class ChatHistoryState
             threadId,
             _connectionGeneration,
             resetGeneration,
-            GetReplacementGeneration(threadId));
+            GetReplacementGeneration(threadId),
+            ResolveSessionId(threadId));
 
     internal ChatHistoryCommitToken BeginReplacement(
         string threadId,
         long resetGeneration)
+    {
+        InvalidateHistory(threadId);
+        return CreateCommitToken(threadId, resetGeneration);
+    }
+
+    private void InvalidateHistory(string threadId)
     {
         _replacementGenerations[threadId] =
             GetReplacementGeneration(threadId) + 1;
         _loadedThreads.Remove(threadId);
         _failedThreads.Remove(threadId);
         _olderPages.Remove(threadId);
-        return CreateCommitToken(threadId, resetGeneration);
     }
 
     internal bool TryBegin(
@@ -185,8 +191,9 @@ internal sealed class ChatHistoryState
         return oldSessionId;
     }
 
-    internal void SeedSessionIds(IEnumerable<SessionInfo> sessions)
+    internal IReadOnlyList<(string ThreadId, string PreviousSessionId)> SeedSessionIds(IEnumerable<SessionInfo> sessions)
     {
+        List<(string ThreadId, string PreviousSessionId)>? replaced = null;
         foreach (var session in sessions)
         {
             if (string.IsNullOrWhiteSpace(session.Key) ||
@@ -205,9 +212,16 @@ internal sealed class ChatHistoryState
             {
                 continue;
             }
+            // Invalidate outstanding reads at acknowledgment, even when no run is tracked.
+            if (_sessionIds.TryGetValue(session.Key, out var previous) && previous != session.SessionId)
+            {
+                InvalidateHistory(session.Key);
+                (replaced ??= []).Add((session.Key, previous));
+            }
             _sessionIds[session.Key] = session.SessionId;
             _resetClearedSessionIds.Remove(session.Key);
         }
+        return replaced ?? [];
     }
 
     private long GetReplacementGeneration(string threadId) =>
@@ -389,6 +403,10 @@ internal sealed class ChatHistoryState
             .Max();
         var nextId = Math.Max(rebuilt.NextId, maxSuffix + 1);
         var entries = rebuilt.Entries.ToBuilder();
+        var oldestHistorySequence = rebuiltMetadata.Values.Select(metadata => metadata.OpenClawSeq)
+            .Where(sequence => sequence > 0).Min();
+        var hasEarlierHistory = plan.OlderCursor is not null || plan.OlderMessageId is not null;
+        var retainedOlderRows = new List<ChatTimelineItem>();
         var remappedEntryIds = new Dictionary<string, string>(StringComparer.Ordinal);
         var retainedPreambles = new HashSet<string>(StringComparer.Ordinal);
         var rebuiltTools = new Dictionary<(string CallId, string RunId), int>();
@@ -414,9 +432,29 @@ internal sealed class ChatHistoryState
                 entries.FindIndex(candidate => candidate.Id == historyEntry.Id) is >= 0 and var index)
                 entries[index] = merged;
         }
+        ChatTimelineItem ReserveEntry(ChatTimelineItem entry, ChatEntryMetadata? metadata)
+        {
+            var retained = entry;
+            if (existingIds.Contains(entry.Id))
+                retained = entry with { Id = $"e{nextId++}" };
+            else if (entry.Id.Length > 1 && entry.Id[0] == 'e' &&
+                     int.TryParse(entry.Id.AsSpan(1), out var suffix) && suffix >= nextId)
+                nextId = suffix + 1;
+            remappedEntryIds[entry.Id] = retained.Id;
+            existingIds.Add(retained.Id);
+            if (metadata is not null)
+                rebuiltMetadata[retained.Id] = metadata;
+            return retained;
+        }
         foreach (var entry in prior.Entries)
         {
             priorMetadata.TryGetValue(entry.Id, out var metadata);
+            // A newest-window refresh cannot replace rows before its first persisted sequence.
+            if ((!authoritative || hasEarlierHistory) && metadata?.OpenClawSeq is > 0 and var seq && seq < oldestHistorySequence)
+            {
+                retainedOlderRows.Add(ReserveEntry(entry, metadata));
+                continue;
+            }
             if (entry.Kind == ChatTimelineItemKind.Assistant &&
                 entry.Presentation is { RunId: not null, StreamItemId: not null, MessageId: null, IsImported: false } progress &&
                 metadata?.GatewayMessageId is null && metadata?.OpenClawSeq is null &&
@@ -513,21 +551,12 @@ internal sealed class ChatHistoryState
                 }
             }
 
-            var entryToAdd = entry;
-            if (existingIds.Contains(entry.Id))
-                entryToAdd = entry with { Id = $"e{nextId++}" };
-            else if (entry.Id.Length > 1 &&
-                     entry.Id[0] == 'e' &&
-                     int.TryParse(entry.Id.AsSpan(1), out var suffix) &&
-                     suffix >= nextId)
-                nextId = suffix + 1;
+            var entryToAdd = ReserveEntry(entry, metadata);
             entries.Add(entryToAdd);
             if (entry.Kind == ChatTimelineItemKind.Assistant &&
                 entry.Presentation is { StreamItemId: not null, MessageId: null } &&
                 metadata?.OpenClawSeq is null)
                 retainedPreambles.Add(entry.Id);
-            remappedEntryIds[entry.Id] = entryToAdd.Id;
-            existingIds.Add(entryToAdd.Id);
             if (metadata?.Timestamp is { } addedTimestamp &&
                 addedTimestamp != default)
             {
@@ -548,9 +577,9 @@ internal sealed class ChatHistoryState
                     SequenceKey(entryToAdd.Kind, addedSequence),
                     entryToAdd);
             }
-            if (metadata is not null)
-                rebuiltMetadata[entryToAdd.Id] = metadata;
         }
+
+        entries.InsertRange(0, retainedOlderRows);
 
         // Unsaved commentary keeps its observed place between surviving rows,
         // rather than moving below a final answer introduced by history.

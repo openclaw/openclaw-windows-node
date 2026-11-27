@@ -194,10 +194,53 @@ internal sealed class ChatConversationState
             var token = _history.BeginReplacement(
                 threadId,
                 GetResetVersionLocked(threadId));
-            _timelines[threadId] = ChatTimelineState.Initial();
-            _entryMeta.Remove(threadId);
+            ClearReplacedTranscriptLocked(threadId);
+            _reset.CompleteRemoteBackfill(threadId);
             return new(BuildSnapshotLocked(context), token);
         }
+    }
+
+    private void ClearReplacedTranscriptLocked(string threadId)
+    {
+        _timelines[threadId] = ChatTimelineState.Initial();
+        _entryMeta.Remove(threadId);
+    }
+
+    private void ApplyPhysicalSessionReplacementLocked(string threadId, string previousSessionId)
+    {
+        var prior = GetOrCreateTimelineLocked(threadId);
+        var priorMetadata = _entryMeta.GetValueOrDefault(threadId);
+        ClearReplacedTranscriptLocked(threadId);
+        _reset.CompleteRemoteBackfill(threadId);
+        var oldRunActive = _lifecycle.ActiveRunSessionId(threadId) == previousSessionId;
+        if (oldRunActive && _lifecycle.TryGetActiveRun(threadId, out var runId) && runId is not null)
+        {
+            _lifecycle.RemoveActiveRun(threadId);
+            _lifecycle.RetireResetRun(runId);
+            _reset.CompleteRun(threadId, runId);
+            _queue.RemoveRunMappingByRunId(threadId, runId);
+        }
+        var queueSending = _queue.TryGetSingleSendingMessage(threadId, out var sending);
+        var lastUser = prior.Entries.FindLast(entry => entry.Kind == ChatTimelineItemKind.User);
+        var entries = prior.Entries.FindAll(entry => entry.Kind == ChatTimelineItemKind.User &&
+            priorMetadata?.GetValueOrDefault(entry.Id) is { LocalQueuedMessageId: { } id } metadata &&
+            !HasGatewayIdentity(metadata) && (id == sending?.Id ||
+                (!oldRunActive && prior.TurnActive && entry == lastUser && _queue.IsAwaitingLocalEcho(threadId, id))));
+        if (queueSending || !entries.IsEmpty)
+        {
+            _timelines[threadId] = _timelines[threadId] with
+            {
+                Entries = entries,
+                NextId = prior.NextId,
+                LocalNonces = prior.LocalNonces,
+                TurnActive = prior.TurnActive,
+                TurnGeneration = prior.TurnGeneration,
+                TurnStartedAt = prior.TurnStartedAt,
+            };
+            foreach (var entry in entries)
+                GetOrCreateThreadMetaLocked(threadId)[entry.Id] = priorMetadata![entry.Id];
+        }
+        ClearLocallyInitiatedIfIdleLocked(threadId);
     }
 
     internal bool TryBeginHistory(
@@ -233,6 +276,16 @@ internal sealed class ChatConversationState
                 _disposed);
     }
 
+    internal bool IsHistoryResponseCurrent(ChatHistoryCommitToken token, string? sessionId)
+    {
+        lock (_gate)
+            return IsHistoryResponseCurrentLocked(token, sessionId);
+    }
+
+    private bool IsHistoryResponseCurrentLocked(ChatHistoryCommitToken token, string? sessionId) =>
+        _history.IsCurrent(token, GetResetVersionLocked(token.ThreadId), _disposed) &&
+        (sessionId is null || _history.ResolveSessionId(token.ThreadId) is not { } current || current == sessionId);
+
     internal bool CanRetryHistory(
         ChatHistoryCommitToken token,
         bool authoritative)
@@ -265,13 +318,17 @@ internal sealed class ChatConversationState
             if (plan.OlderPage is { } older &&
                 (_history.OlderPage(token.ThreadId) != older || plan.SessionId != older.SessionId))
                 return false;
-            if (runLease is not null && (_history.ResolveSessionId(token.ThreadId) != runLease.SessionId ||
+            var currentSessionId = _history.ResolveSessionId(token.ThreadId);
+            var differentIncarnation = currentSessionId is not null && plan.SessionId is not null && currentSessionId != plan.SessionId;
+            if (differentIncarnation && token.SessionId != currentSessionId)
+                return false;
+            if (runLease is not null && (currentSessionId != runLease.SessionId ||
                 runLease.TranscriptTurnGeneration is not null && (plan.SessionId is not null || runLease.RunId is not null) &&
                 plan.SessionId != runLease.SessionId))
                 return false;
 
-            var prior = GetOrCreateTimelineLocked(token.ThreadId);
-            var priorMetadata = _entryMeta.TryGetValue(
+            var prior = differentIncarnation ? ChatTimelineState.Initial() : GetOrCreateTimelineLocked(token.ThreadId);
+            var priorMetadata = !differentIncarnation && _entryMeta.TryGetValue(
                 token.ThreadId,
                 out var metadata)
                 ? metadata
@@ -300,17 +357,11 @@ internal sealed class ChatConversationState
 
     internal ChatDataSnapshot? SnapshotIfHistoryTokenCurrent(
         ChatHistoryCommitToken token,
-        ChatProjectionContext context)
+        ChatProjectionContext context,
+        string? sessionId = null)
     {
         lock (_gate)
-        {
-            return _history.IsCurrent(
-                       token,
-                       GetResetVersionLocked(token.ThreadId),
-                       _disposed)
-                ? BuildSnapshotLocked(context)
-                : null;
-        }
+            return IsHistoryResponseCurrentLocked(token, sessionId) ? BuildSnapshotLocked(context) : null;
     }
 
     internal ChatHistoryRunLease? CaptureHistoryRun(string threadId)
@@ -504,12 +555,6 @@ internal sealed class ChatConversationState
         }
     }
 
-    internal bool IsCurrentResetGeneration(string threadId, long generation)
-    {
-        lock (_gate)
-            return GetResetVersionLocked(threadId) == generation;
-    }
-
     internal ChatStatusTransition ApplyStatus(
         ConnectionStatus status,
         ChatProjectionContext context)
@@ -593,7 +638,8 @@ internal sealed class ChatConversationState
                 return new(BuildSnapshotLocked(context), []);
             _presentation.ReplaceSessions(sessions);
             var currentSessions = _presentation.SessionSnapshot();
-            _history.SeedSessionIds(currentSessions);
+            foreach (var (threadId, previousSessionId) in _history.SeedSessionIds(currentSessions))
+                ApplyPhysicalSessionReplacementLocked(threadId, previousSessionId);
             EnsureTimelinesForSessionsLocked();
             _presentation.RememberLastSessionState(context);
             return new(
@@ -3279,24 +3325,26 @@ internal sealed class ChatConversationState
                    terminal.ApprovalId);
     }
 
-    internal void CompleteRemoteBackfill(string threadId)
+    internal void CompleteRemoteBackfill(ChatHistoryCommitToken token)
     {
         lock (_gate)
-            _reset.CompleteRemoteBackfill(threadId);
+            if (_history.IsCurrent(token, GetResetVersionLocked(token.ThreadId), _disposed))
+                _reset.CompleteRemoteBackfill(token.ThreadId);
     }
 
     internal ChatRemoteUserBackfillTransition? ApplyRemoteUserBackfill(
-        string threadId,
+        ChatHistoryCommitToken token,
+        string? sessionId,
         ChatMessageInfo message,
         GatewayMediaMessageProjectionResult projection,
         IReadOnlyList<ChatAttachmentPresentation> attachments,
-        long expectedResetGeneration,
         bool openResetGate,
         ChatProjectionContext context)
     {
         lock (_gate)
         {
-            if (GetResetVersionLocked(threadId) != expectedResetGeneration ||
+            var threadId = token.ThreadId;
+            if (!IsHistoryResponseCurrentLocked(token, sessionId) ||
                 _reset.IsPreResetTimestamp(threadId, message.Ts))
             {
                 return null;

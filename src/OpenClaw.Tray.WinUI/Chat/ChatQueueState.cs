@@ -493,6 +493,10 @@ internal sealed class ChatQueueState
     internal void ClearAssistantFallbackPromotion(string threadId) =>
         _assistantFallbackPromotedThreads.Remove(threadId);
 
+    internal bool IsAwaitingLocalEcho(string threadId, string messageId) =>
+        _localSentTexts.TryGetValue(threadId, out var echoes) &&
+        echoes.Any(echo => echo.QueuedMessageId == messageId);
+
     internal ChatLocalSentText[] SnapshotLocalEchoes(string threadId) =>
         _localSentTexts.TryGetValue(threadId, out var queue)
             ? queue.ToArray()

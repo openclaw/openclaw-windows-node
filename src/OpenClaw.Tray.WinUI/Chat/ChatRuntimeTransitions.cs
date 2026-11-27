@@ -86,7 +86,8 @@ internal sealed record ChatHistoryCommitToken(
     string ThreadId,
     long ConnectionGeneration,
     long ResetGeneration,
-    long ReplacementGeneration);
+    long ReplacementGeneration,
+    string? SessionId = null);
 
 internal sealed record ChatHistoryRunLease(string? RunId, string SessionId, long? StartSequence,
     long? TranscriptTurnGeneration = null, int? TranscriptBoundarySequence = null,

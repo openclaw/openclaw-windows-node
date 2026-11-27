@@ -423,7 +423,6 @@ public sealed class InteractiveGatewayChatTests
     {
         IdleListBeforeSavedReply,
         QuotedReplyInvalidation,
-        RetainedCancelledInputs,
         RetainedCancelledInputsAcrossElevenPages,
         QueuedInputOnOlderPage,
         ChangedPendingPage,
@@ -435,7 +434,6 @@ public sealed class InteractiveGatewayChatTests
     [Theory]
     [InlineData(ExternalTranscriptRecovery.IdleListBeforeSavedReply)]
     [InlineData(ExternalTranscriptRecovery.QuotedReplyInvalidation)]
-    [InlineData(ExternalTranscriptRecovery.RetainedCancelledInputs)]
     [InlineData(ExternalTranscriptRecovery.RetainedCancelledInputsAcrossElevenPages)]
     [InlineData(ExternalTranscriptRecovery.QueuedInputOnOlderPage)]
     [InlineData(ExternalTranscriptRecovery.ChangedPendingPage)]
@@ -544,8 +542,8 @@ public sealed class InteractiveGatewayChatTests
             await provider.LoadHistoryAsync(key, force: true).WaitAsync(HistoryMergeTimeout);
             Assert.Equal(Enumerable.Range(1, (pendingTotal - 1) / 20)
                 .Select(page => (long?)(pendingTotal - page * 20 + 1)).Prepend(null), cursors);
-            Assert.Equal(scenario is not (ExternalTranscriptRecovery.RetainedCancelledInputs or
-                ExternalTranscriptRecovery.RetainedCancelledInputsAcrossElevenPages), Latest(snapshots, key)!.TurnActive);
+            Assert.Equal(scenario != ExternalTranscriptRecovery.RetainedCancelledInputsAcrossElevenPages,
+                Latest(snapshots, key)!.TurnActive);
         }
         else
         {
@@ -571,6 +569,220 @@ public sealed class InteractiveGatewayChatTests
         Assert.Equal(transcript, Latest(snapshots, key)!.Entries.Select(row => row.Text));
         Assert.DoesNotContain(server.Requests, request => request.Method == "chat.send");
         Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExternalHistoryRefresh_PreservesLoadedPrefixBeforeNewestWindow(bool authoritative)
+    {
+        const string key = GatewayScenario.EmptySessionKey;
+        const string sessionId = "window-session";
+        const string run = "external-window-run";
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        server.OverrideSessionListRead(_ => new { sessions = new[] { new { key, sessionId, status = "running", hasActiveRun = true } } });
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var replyPainted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        client.SessionsUpdated += (_, _) => { if (provider.GetSessionId(key) == sessionId) ready.TrySetResult(); };
+        provider.Changed += (_, e) =>
+        {
+            snapshots.Enqueue(e.Snapshot);
+            if (e.Snapshot.Timelines.TryGetValue(key, out var timeline) && timeline.TurnActive &&
+                timeline.Entries.Any(row => row.Text == "Transcript row 202")) replyPainted.TrySetResult();
+        };
+        static string Text(int seq) => seq is 1 or 3 ? "Repeated prompt" : $"Transcript row {seq}";
+        static object Message(int seq) => new
+        {
+            role = seq % 2 == 1 ? "user" : "assistant", content = seq == 2 ? (object)new object[]
+            {
+                new { type = "text", text = Text(seq) },
+                new { type = "toolCall", id = "prefix-call", name = "read", arguments = new { path = "fixture.txt" } },
+                new { type = "text", text = "End of multipart reply" },
+            } : Text(seq),
+            timestamp = 1795800000000L + seq,
+            __openclaw = new { id = $"message-{seq}", seq, runId = seq == 202 ? run : null },
+        };
+        server.OverrideChatRead("chat.history", _ => new
+        {
+            sessionKey = key, sessionId, messages = Enumerable.Range(1, 200).Select(Message).ToArray(),
+        });
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(HistoryMergeTimeout);
+        await provider.LoadAsync();
+        await provider.LoadHistoryAsync(key).WaitAsync(HistoryMergeTimeout);
+        foreach (var seq in new[] { 201, 202 })
+            await server.PublishTranscriptEventAsync("session.message", new { sessionKey = key, sessionId,
+                runId = seq == 202 ? run : null, status = "running", hasActiveRun = true, message = Message(seq) });
+        await replyPainted.Task.WaitAsync(HistoryMergeTimeout);
+        var original = Latest(snapshots, key)!.Entries;
+        var prefix = original.TakeWhile(row => row.Text != Text(4)).SkipLast(1).ToArray();
+        Assert.Contains(prefix, row => row.ToolCallId == "prefix-call");
+        Assert.Equal("End of multipart reply", prefix.Last().Text);
+
+        server.OverrideChatRead("chat.history", _ => new
+        {
+            sessionKey = key, sessionId, messages = Enumerable.Range(3, 200).Select(Message).ToArray(),
+            hasMore = true, olderCursor = "fixture-older-window",
+            sessionInfo = new { sessionId, lastRunId = run, status = "done", hasActiveRun = false },
+            pendingInputs = new { total = 0, items = Array.Empty<object>() },
+        });
+        await provider.LoadHistoryAsync(key, force: true, authoritative: authoritative).WaitAsync(HistoryMergeTimeout);
+
+        var refreshed = Latest(snapshots, key)!;
+        Assert.Equal(prefix.Select(row => row.Text).Concat(Enumerable.Range(3, 200).Select(Text)),
+            refreshed.Entries.Select(row => row.Text));
+        Assert.False(refreshed.TurnActive);
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task IdleHistoryResponse_CannotSurfaceAfterProviderAcknowledgesNewPhysicalSession(
+        bool userBackfill, bool holdDelivery)
+    {
+        const string key = GatewayScenario.EmptySessionKey;
+        var sessionId = "old-session";
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        server.OverrideSessionListRead(_ => new { sessions = new[] { new { key, sessionId = Volatile.Read(ref sessionId),
+            status = "done", hasActiveRun = false } } });
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var oldAcknowledged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newAcknowledged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var captured = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newHistoryLoaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliveryReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseDelivery = new ManualResetEventSlim();
+        if (holdDelivery)
+        {
+            provider.BeforePublishForTests = snapshot =>
+            {
+                if (snapshot.Timelines.TryGetValue(key, out var timeline) &&
+                    timeline.Entries.Any(row => row.Text == "Old prompt"))
+                {
+                    deliveryReady.TrySetResult();
+                    releaseDelivery.Wait(HistoryMergeTimeout);
+                }
+            };
+        }
+        var snapshotsAfterRotation = new ConcurrentQueue<ChatDataSnapshot>();
+        client.SessionsUpdated += (_, _) =>
+        {
+            if (provider.GetSessionId(key) == "old-session") oldAcknowledged.TrySetResult();
+            if (provider.GetSessionId(key) == "new-session") newAcknowledged.TrySetResult();
+        };
+        provider.Changed += (_, e) =>
+        {
+            if (newAcknowledged.Task.IsCompletedSuccessfully) snapshotsAfterRotation.Enqueue(e.Snapshot);
+            if (e.Snapshot.Timelines.TryGetValue(key, out var timeline) &&
+                timeline.Entries.Any(row => row.Text == "New reply"))
+                newHistoryLoaded.TrySetResult();
+        };
+        server.OverrideChatRead("chat.history", _ =>
+        {
+            captured.TrySetResult();
+            return new { sessionKey = key, sessionId = "old-session", messages = new[] {
+                new { role = "user", content = "Old prompt" }, new { role = "assistant", content = "Old reply" },
+            } };
+        });
+        await client.ConnectAsync();
+        await oldAcknowledged.Task.WaitAsync(HistoryMergeTimeout);
+        var before = await provider.LoadAsync();
+        Assert.False(before.Timelines[key].TurnActive);
+        if (!holdDelivery)
+            server.HoldHistory(key);
+        var oldRead = userBackfill ? provider.FetchRemoteUserMessageForTestsAsync(key, openResetGateOnSuccess: false)
+            : provider.LoadHistoryAsync(key);
+        try
+        {
+            await (holdDelivery ? deliveryReady.Task : captured.Task).WaitAsync(HistoryMergeTimeout);
+            Volatile.Write(ref sessionId, "new-session");
+            await server.NotifySessionsChangedAsync();
+            await newAcknowledged.Task.WaitAsync(HistoryMergeTimeout);
+            if (!userBackfill)
+            {
+                server.OverrideChatRead("chat.history", _ => new { sessionKey = key, sessionId = "new-session", messages = new[] {
+                    new { role = "user", content = "New prompt" }, new { role = "assistant", content = "New reply" },
+                } });
+                await provider.LoadHistoryAsync(key).WaitAsync(HistoryMergeTimeout);
+            }
+        }
+        finally
+        {
+            releaseDelivery.Set();
+            if (!holdDelivery)
+                server.ReleaseHistory(key);
+        }
+        await oldRead.WaitAsync(HistoryMergeTimeout);
+        if (!userBackfill)
+            await newHistoryLoaded.Task.WaitAsync(HistoryMergeTimeout);
+
+        Assert.Equal("new-session", provider.GetSessionId(key));
+        Assert.All(snapshotsAfterRotation, snapshot =>
+            Assert.DoesNotContain(snapshot.Timelines[key].Entries, row => row.Text is "Old prompt" or "Old reply"));
+        Assert.Equal(userBackfill ? [] : new[] { "New prompt", "New reply" },
+            (await provider.LoadAsync()).Timelines[key].Entries.Select(row => row.Text));
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task PhysicalSessionAcknowledgment_RetainsUnresolvedOptimisticSend()
+    {
+        const string key = GatewayScenario.EmptySessionKey;
+        const string prompt = "Pending local prompt";
+        var sessionId = "old-session";
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        server.OverrideSessionListRead(_ => new { sessions = new[] { new { key, sessionId = Volatile.Read(ref sessionId),
+            status = "done", hasActiveRun = false } } });
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var oldAcknowledged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newAcknowledged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, _) =>
+        {
+            if (provider.GetSessionId(key) == "old-session") oldAcknowledged.TrySetResult();
+            if (provider.GetSessionId(key) == "new-session") newAcknowledged.TrySetResult();
+        };
+        await client.ConnectAsync();
+        await oldAcknowledged.Task.WaitAsync(HistoryMergeTimeout);
+        await provider.LoadAsync();
+        server.HoldChatSends();
+        using var timeout = new CancellationTokenSource(HistoryMergeTimeout);
+        var send = provider.SendMessageAsync(key, prompt, timeout.Token);
+        try
+        {
+            await server.WaitForRequestAsync("chat.send", key, cancellationToken: timeout.Token);
+            Volatile.Write(ref sessionId, "new-session");
+            await server.NotifySessionsChangedAsync();
+            await newAcknowledged.Task.WaitAsync(timeout.Token);
+
+            var timeline = (await provider.LoadAsync()).Timelines[key];
+            Assert.Equal(prompt, Assert.Single(timeline.Entries).Text);
+            Assert.True(timeline.TurnActive);
+        }
+        finally { server.ReleaseChatSends(); }
+        await send.WaitAsync(HistoryMergeTimeout);
         await client.DisconnectAsync();
     }
 

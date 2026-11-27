@@ -101,6 +101,7 @@ internal sealed class ChatResetState
         _submittedLocalEchoTexts.Clear();
         _pendingLocalSubmissions.Clear();
         _acceptedLifecycleFloors.Clear();
+        _remoteBackfillInFlight.Clear();
     }
 
     internal void AddIgnoredRun(string threadId, string runId)

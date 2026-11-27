@@ -64,7 +64,7 @@ internal sealed class ChatHistoryLoader : IDisposable
     private readonly ChatTelemetryTracker _telemetry;
     private readonly Func<TimeSpan, CancellationToken, Func<Task>, Task> _retryScheduler;
     private readonly Action? _failureReservedForTesting;
-    private readonly Dictionary<string, long> _inFlight = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (long RequestId, ChatHistoryCommitToken Token)> _inFlight = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ChatHistoryCommitToken> _authoritativePending =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, ChatHistoryCommitToken> _replacementPending =
@@ -277,7 +277,7 @@ internal sealed class ChatHistoryLoader : IDisposable
             {
                 return;
             }
-            if (_inFlight.ContainsKey(threadId))
+            if (_inFlight.TryGetValue(threadId, out var running))
             {
                 if (olderPage is not null)
                     return;
@@ -302,14 +302,13 @@ internal sealed class ChatHistoryLoader : IDisposable
                             _state.CaptureHistoryToken(threadId);
                     }
                 }
-                else if (force && expectedToken is null)
+                else if ((force && expectedToken is null) || !_state.IsHistoryRequestCurrent(running.Token))
                 {
-                    _forcePending[threadId] = _state.CaptureHistoryToken(threadId);
+                    _forcePending[threadId] = expectedToken ?? _state.CaptureHistoryToken(threadId);
                 }
                 return;
             }
             requestId = ++_requestSequence;
-            _inFlight[threadId] = requestId;
             generationToken = _generationCancellation.Token;
             canBegin = _state.TryBeginHistory(
                 threadId,
@@ -318,6 +317,7 @@ internal sealed class ChatHistoryLoader : IDisposable
                 out commitToken,
                 out model,
                 out generationActivation);
+            _inFlight[threadId] = (requestId, commitToken);
         }
 
         if (!canBegin)
@@ -1175,7 +1175,7 @@ internal sealed class ChatHistoryLoader : IDisposable
         lock (_gate)
         {
             if (!_inFlight.TryGetValue(threadId, out var current) ||
-                current != requestId)
+                current.RequestId != requestId)
             {
                 pendingReload = null;
                 return;

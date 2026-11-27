@@ -1053,7 +1053,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         {
             var snapshot = _state.SnapshotIfHistoryTokenCurrent(
                 result.Token,
-                ProjectionContext());
+                ProjectionContext(),
+                result.SessionId);
             if (snapshot is null)
                 return;
             if (result.PublishSnapshot)
@@ -2426,7 +2427,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         var historyOperation = _telemetry.StartHistoryBackfill(telemetryReason);
         var historyOutcome = ChatTelemetryOutcome.Success;
         Exception? historyException = null;
-        var requestResetVersion = _state.GetResetGeneration(threadId);
+        var historyToken = _state.CaptureHistoryToken(threadId);
 
         try
         {
@@ -2458,7 +2459,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                 .CreateAttachmentMatcher(
                     history.SessionId,
                     threadId,
-                    requestResetVersion)
+                    historyToken.ResetGeneration)
                 .TryMatch(
                     projection.ReconciliationText,
                     projection.AttachmentCorrelationSignature,
@@ -2469,20 +2470,25 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                 : projection.Attachments;
 
             var transition = _state.ApplyRemoteUserBackfill(
-                threadId,
+                historyToken,
+                history.SessionId,
                 lastUser,
                 projection,
                 projectedAttachments,
-                requestResetVersion,
                 openResetGateOnSuccess,
                 ProjectionContext());
             if (transition is null)
                 return;
-            HandleOpenedLifecycle(
-                threadId,
-                transition.OpenedLifecycle,
-                transition.RuntimeGeneration);
-            Publish(transition.Snapshot);
+#if OPENCLAW_TRAY_TESTS
+            BeforePublishForTests?.Invoke(transition.Snapshot);
+#endif
+            QueueFencedDelivery(() =>
+            {
+                if (_state.SnapshotIfHistoryTokenCurrent(historyToken, ProjectionContext(), history.SessionId) is not { } snapshot)
+                    return;
+                HandleOpenedLifecycle(threadId, transition.OpenedLifecycle, transition.RuntimeGeneration);
+                DeliverPublishBatch(snapshot, []);
+            });
             Logger.Info($"[REMOTE] Injected remote user message for threadId='{threadId}' len={lastUser.Text.Length}");
         }
         catch (Exception ex)
@@ -2496,7 +2502,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         finally
         {
             if (openResetGateOnSuccess)
-                _state.CompleteRemoteBackfill(threadId);
+                _state.CompleteRemoteBackfill(historyToken);
             _telemetry.FinishHistoryBackfill(historyOperation, historyOutcome, historyException);
         }
     }
@@ -2512,13 +2518,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         string threadId,
         long resetGeneration)
     {
+        var token = _state.CaptureHistoryToken(threadId);
+        if (token.ResetGeneration != resetGeneration)
+            return;
         try
         {
             await Task.Delay(500).ConfigureAwait(false);
             var history = await _bridge
                 .RequestChatHistoryAsync(threadId)
                 .ConfigureAwait(false);
-            if (!_state.IsCurrentResetGeneration(threadId, resetGeneration))
+            if (!_state.IsHistoryResponseCurrent(token, history.SessionId))
                 return;
             var ids = _persistence.FindAbortedMessageIds(
                 threadId,
