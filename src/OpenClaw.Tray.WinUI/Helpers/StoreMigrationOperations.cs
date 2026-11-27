@@ -102,14 +102,14 @@ internal sealed class StoreMigrationOperations(string pipeName) : IStoreMigratio
             .Complete(installation, targetVersion).State);
     }
 
-    public Task<StoreMigrationFinalizationDecision> FinalizeAsync()
-    {
-        var records = new MigrationStartupRecordReader(_binding!, _logger);
-        return new StoreMigrationFinalizationCoordinator(
+    // The coordinator detects, verifies removal, reads the receipt, and hashes the inventory
+    // before its first await, so it must start on the pool like its siblings, not the dispatcher.
+    public Task<StoreMigrationFinalizationDecision> FinalizeAsync() => Task.Run(() =>
+        new StoreMigrationFinalizationCoordinator(
             _binding!, _detector!, new InnoSourceRemovalVerifier(_binding!, AppIdentity.MutexBaseName),
-            records, new MigrationInventoryCapture(_binding!), new StoreMigrationAutoStartApplier(),
-            new MigrationFinalizationRecordCleaner(_binding!), _logger).FinalizeAsync();
-    }
+            new MigrationStartupRecordReader(_binding!, _logger), new MigrationInventoryCapture(_binding!),
+            new StoreMigrationAutoStartApplier(), new MigrationFinalizationRecordCleaner(_binding!), _logger)
+            .FinalizeAsync());
 
     /// <summary>
     /// Like <see cref="HoldsCompletionReceipt"/>, independent of policy and package identity:
