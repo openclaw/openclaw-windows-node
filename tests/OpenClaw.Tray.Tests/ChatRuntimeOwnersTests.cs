@@ -9,6 +9,26 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ChatConversationStateTests
 {
     [Fact]
+    public void HistoryRecovery_UnidentifiedTurnRejectsForeignPhysicalHistoryBeforeMerge()
+    {
+        var state = new ChatConversationState(ConnectionStatus.Connected, null, null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.ApplySessions([new SessionInfo { Key = "main", SessionId = "current-session" }], context);
+        state.ApplyEvent("main", new ChatUserMessageEvent("Current prompt"),
+            state.BuildLiveMetadata("main", gatewayMessageId: "prompt-1", openClawSeq: 1), context);
+        var token = state.CaptureHistoryToken("main");
+        var lease = Assert.IsType<ChatHistoryRunLease>(state.CaptureHistoryRun("main"));
+        Assert.Null(lease.RunId);
+        var before = state.Snapshot(context).Timelines["main"];
+        var foreign = new ChatHistoryRebuildPlan("foreign-session", ChatTimelineState.Initial(),
+            new Dictionary<string, ChatEntryMetadata>(), 0);
+
+        Assert.False(state.CommitHistory(token, foreign, DateTimeOffset.UtcNow, false, lease));
+        Assert.Equal("current-session", state.GetSessionId("main"));
+        Assert.Equal(before, state.Snapshot(context).Timelines["main"]);
+    }
+
+    [Fact]
     public void HistoryRecovery_ChangedSessionCannotBeRestoredByTheOldResponse()
     {
         var state = new ChatConversationState(ConnectionStatus.Connected, null, null);

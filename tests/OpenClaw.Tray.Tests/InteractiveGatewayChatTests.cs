@@ -419,6 +419,161 @@ public sealed class InteractiveGatewayChatTests
         await client.DisconnectAsync();
     }
 
+    public enum ExternalTranscriptRecovery
+    {
+        IdleListBeforeSavedReply,
+        QuotedReplyInvalidation,
+        RetainedCancelledInputs,
+        RetainedCancelledInputsAcrossElevenPages,
+        QueuedInputOnOlderPage,
+        ChangedPendingPage,
+        MissingPendingPage,
+        PendingPageForDifferentKey,
+        NewerPromptOnlyInHistory,
+    }
+
+    [Theory]
+    [InlineData(ExternalTranscriptRecovery.IdleListBeforeSavedReply)]
+    [InlineData(ExternalTranscriptRecovery.QuotedReplyInvalidation)]
+    [InlineData(ExternalTranscriptRecovery.RetainedCancelledInputs)]
+    [InlineData(ExternalTranscriptRecovery.RetainedCancelledInputsAcrossElevenPages)]
+    [InlineData(ExternalTranscriptRecovery.QueuedInputOnOlderPage)]
+    [InlineData(ExternalTranscriptRecovery.ChangedPendingPage)]
+    [InlineData(ExternalTranscriptRecovery.MissingPendingPage)]
+    [InlineData(ExternalTranscriptRecovery.PendingPageForDifferentKey)]
+    [InlineData(ExternalTranscriptRecovery.NewerPromptOnlyInHistory)]
+    public async Task ExternalTranscript_RecoversFromGatewayEventsAndPendingHistory(ExternalTranscriptRecovery scenario)
+    {
+        const string key = GatewayScenario.EmptySessionKey;
+        const string sessionId = "physical-session";
+        const string run = "external-run";
+        var quoted = scenario == ExternalTranscriptRecovery.QuotedReplyInvalidation;
+        var newerPrompt = scenario == ExternalTranscriptRecovery.NewerPromptOnlyInHistory;
+        var paged = scenario is not (ExternalTranscriptRecovery.IdleListBeforeSavedReply or
+            ExternalTranscriptRecovery.QuotedReplyInvalidation or ExternalTranscriptRecovery.NewerPromptOnlyInHistory);
+        var pendingTotal = scenario == ExternalTranscriptRecovery.RetainedCancelledInputsAcrossElevenPages ? 201 : paged ? 21 : 0;
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        var idle = 0;
+        server.OverrideSessionListRead(_ =>
+        {
+            var active = Volatile.Read(ref idle) == 0;
+            return new { sessions = new[] { new { key, sessionId, status = active ? "running" : "done",
+                hasActiveRun = active, lastRunId = run } } };
+        });
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var runningRow = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var idleRow = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        client.SessionUsageSnapshotUpdated += (_, usage) =>
+        {
+            if (usage.Sessions.Any(s => s.Key == key && s.HasActiveRun == true)) runningRow.TrySetResult();
+            if (usage.Sessions.Any(s => s.Key == key && s.HasActiveRun == false)) idleRow.TrySetResult();
+        };
+        var promptPainted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var replyPainted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var settled = new TaskCompletionSource<ChatTimelineState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        provider.Changed += (_, e) =>
+        {
+            snapshots.Enqueue(e.Snapshot);
+            if (!e.Snapshot.Timelines.TryGetValue(key, out var timeline)) return;
+            if (timeline.TurnActive && timeline.Entries.Any(row => row.Text == "External prompt"))
+                promptPainted.TrySetResult();
+            if (timeline.Entries.Any(row => row.Text == "Delivered reply"))
+            {
+                replyPainted.TrySetResult();
+                if (!timeline.TurnActive) settled.TrySetResult(timeline);
+            }
+        };
+        await client.ConnectAsync();
+        await runningRow.Task.WaitAsync(HistoryMergeTimeout);
+        await provider.LoadAsync();
+        const long timestamp = 1795800000000L;
+        var prompt = new { role = "user", content = "External prompt", timestamp, __openclaw = new { id = "user-1", seq = 1 } };
+        var reply = new { role = "assistant", content = "Delivered reply", timestamp = timestamp + 1,
+            replyToId = quoted ? "user-1" : null, __openclaw = new { id = "reply-1", seq = newerPrompt ? 3 : 2, runId = run } };
+        object[] historyMessages = newerPrompt
+            ? [prompt, new { role = "user", content = "Newer external prompt", timestamp,
+                __openclaw = new { id = "user-2", seq = 2 } }, reply]
+            : [prompt, reply];
+        var cursors = new ConcurrentQueue<long?>();
+        server.OverrideChatRead("chat.history", parameters =>
+        {
+            long? before = parameters.TryGetProperty("pendingBefore", out var cursor) ? cursor.GetInt64() : null;
+            cursors.Enqueue(before);
+            if (before is not null && parameters.TryGetProperty("sessionId", out _))
+                throw new InvalidOperationException("sessionId requires messageId");
+            var newest = before is null ? pendingTotal : checked((int)before.Value - 1);
+            var oldest = Math.Max(1, newest - 19);
+            var items = Enumerable.Range(oldest, newest - oldest + 1).Select(i => new
+            {
+                id = $"pending-{i}",
+                state = i == 1 && scenario == ExternalTranscriptRecovery.QueuedInputOnOlderPage ? "queued" : "cancelled",
+            }).ToArray();
+            var total = before is not null && scenario == ExternalTranscriptRecovery.ChangedPendingPage ? pendingTotal + 1 : pendingTotal;
+            return new
+            {
+                sessionKey = before is not null && scenario == ExternalTranscriptRecovery.PendingPageForDifferentKey
+                    ? "agent:main:elsewhere" : key,
+                sessionId, messages = historyMessages,
+                sessionInfo = new { sessionId, lastRunId = run, hasActiveRun = false, status = "done", activeRunIds = Array.Empty<string>() },
+                pendingInputs = before is not null && scenario == ExternalTranscriptRecovery.MissingPendingPage ? null
+                    : new { items, total, nextBefore = oldest > 1 ? (long?)oldest : null, queuedCount = 0 },
+            };
+        });
+        await server.PublishTranscriptEventAsync("session.message", new { sessionKey = key, sessionId, status = "running",
+            hasActiveRun = true, message = prompt });
+        await promptPainted.Task.WaitAsync(HistoryMergeTimeout);
+
+        if (newerPrompt)
+        {
+            await provider.LoadHistoryAsync(key, force: true).WaitAsync(HistoryMergeTimeout);
+            Assert.True(Latest(snapshots, key)!.TurnActive);
+            Assert.Equal(new long?[] { null }, cursors);
+        }
+        else if (paged)
+        {
+            await server.PublishTranscriptEventAsync("session.message", new { sessionKey = key, sessionId, status = "running",
+                hasActiveRun = true, runId = run, message = reply });
+            await replyPainted.Task.WaitAsync(HistoryMergeTimeout);
+            await provider.LoadHistoryAsync(key, force: true).WaitAsync(HistoryMergeTimeout);
+            Assert.Equal(Enumerable.Range(1, (pendingTotal - 1) / 20)
+                .Select(page => (long?)(pendingTotal - page * 20 + 1)).Prepend(null), cursors);
+            Assert.Equal(scenario is not (ExternalTranscriptRecovery.RetainedCancelledInputs or
+                ExternalTranscriptRecovery.RetainedCancelledInputsAcrossElevenPages), Latest(snapshots, key)!.TurnActive);
+        }
+        else
+        {
+            Volatile.Write(ref idle, 1);
+            if (quoted)
+            {
+                await server.PublishTranscriptEventAsync("sessions.changed", new { sessionKey = key, sessionId, phase = "message",
+                    status = "done", hasActiveRun = false, lastRunId = run });
+            }
+            else
+            {
+                await server.NotifySessionsChangedAsync();
+                await idleRow.Task.WaitAsync(HistoryMergeTimeout);
+                Assert.Empty(cursors);
+                await server.PublishTranscriptEventAsync("session.message", new { sessionKey = key, sessionId, status = "done",
+                    hasActiveRun = false, lastRunId = run, runId = run, message = reply });
+            }
+            await settled.Task.WaitAsync(HistoryMergeTimeout);
+            Assert.Equal(new long?[] { null }, cursors);
+        }
+        string[] transcript = newerPrompt ? ["External prompt", "Newer external prompt", "Delivered reply"]
+            : ["External prompt", "Delivered reply"];
+        Assert.Equal(transcript, Latest(snapshots, key)!.Entries.Select(row => row.Text));
+        Assert.DoesNotContain(server.Requests, request => request.Method == "chat.send");
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
     private static ChatTimelineState? Latest(ConcurrentQueue<ChatDataSnapshot> snapshots, string key) =>
         snapshots.LastOrDefault()?.Timelines.GetValueOrDefault(key);
 

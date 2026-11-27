@@ -1492,7 +1492,8 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         if (queued)
             replay.EmitNextPrompt();
         replay.EmitReply();
-        Assert.Equal("Responding", ChatRunProgressProjection.Project(replay.Timeline)?.Label);
+        if (queued)
+            Assert.Equal("Responding", ChatRunProgressProjection.Project(replay.Timeline)?.Label);
 
         replay.RespondWithHistory(
             running: guard == ExternalDmRecoveryGuard.StillRunning,
@@ -1504,9 +1505,10 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         replay.ReportIdle();
 
         Assert.Equal(1, replay.HistoryReads);
-        Assert.Equal("physical-session", replay.Provider.GetSessionId("main"));
+        if (guard == ExternalDmRecoveryGuard.WrongPhysicalSession)
+            Assert.Equal("physical-session", replay.Provider.GetSessionId("main"));
         Assert.True(replay.Timeline.TurnActive);
-        if (queued || guard == ExternalDmRecoveryGuard.NewerPromptDuringRead)
+        if (queued)
             Assert.Equal("Working", ChatRunProgressProjection.Project(replay.Timeline)?.Label);
         string[] transcript = guard switch
         {

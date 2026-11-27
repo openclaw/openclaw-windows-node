@@ -363,7 +363,7 @@ internal sealed class ChatHistoryState
         void PreserveTranscriptRun(ChatTimelineItem historyEntry, ChatEntryMetadata? liveMetadata)
         {
             if (historyEntry.Kind == ChatTimelineItemKind.Assistant &&
-                liveMetadata is { TranscriptSessionId: { } sessionId, LiveRunId: { } runId, OpenClawSeq: { } sequence } &&
+                liveMetadata is { TranscriptSessionId: { } sessionId, TranscriptRunId: { } runId, OpenClawSeq: { } sequence } &&
                 plan.SessionId == sessionId &&
                 rebuiltMetadata.TryGetValue(historyEntry.Id, out var historyMetadata) &&
                 historyMetadata.OpenClawSeq == sequence &&
@@ -371,7 +371,7 @@ internal sealed class ChatHistoryState
                 rebuiltMetadata[historyEntry.Id] = historyMetadata with
                 {
                     TranscriptSessionId = sessionId,
-                    LiveRunId = runId,
+                    TranscriptRunId = runId,
                 };
         }
 

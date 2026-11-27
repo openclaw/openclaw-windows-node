@@ -95,6 +95,9 @@ public interface IChatGatewayBridge : IDisposable
     /// </summary>
     Task ClearSessionThinkingLevelAsync(string sessionKey);
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey);
+    Task<ChatHistoryInfo> RequestPendingChatHistoryAsync(string sessionKey, long pendingBefore,
+        long connectionEpoch, CancellationToken cancellationToken) =>
+        Task.FromException<ChatHistoryInfo>(new NotSupportedException("Pending input history is unavailable on this bridge."));
     Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string sessionKey, ChatHistoryPageRequest page) =>
         Task.FromException<ChatHistoryInfo>(new NotSupportedException("Older history is not available on this bridge."));
     long? ChatMessageReadConnectionEpoch => null;
@@ -145,6 +148,7 @@ public interface IChatGatewayBridge : IDisposable
     event EventHandler<ConnectionStatus>? StatusChanged;
     event EventHandler<SessionInfo[]>? SessionsUpdated;
     event EventHandler<SessionUsageSnapshot>? SessionUsageSnapshotUpdated;
+    event EventHandler<SessionListChange>? SessionListChanged { add { } remove { } }
     event EventHandler<SessionCommandResult>? SessionCommandCompleted;
     event EventHandler<ChatMessageInfo>? ChatMessageReceived;
     event EventHandler<AgentEventInfo>? AgentEventReceived;
@@ -165,6 +169,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     private readonly EventHandler<ConnectionStatus> _statusChangedHandler;
     private readonly EventHandler<SessionInfo[]> _sessionsUpdatedHandler;
     private readonly EventHandler<SessionUsageSnapshot> _sessionUsageSnapshotUpdatedHandler;
+    private readonly EventHandler<SessionListChange> _sessionListChangedHandler;
     private readonly EventHandler<SessionCommandResult> _sessionCommandCompletedHandler;
     private readonly EventHandler<ChatMessageInfo> _chatMessageReceivedHandler;
     private readonly EventHandler<AgentEventInfo> _agentEventReceivedHandler;
@@ -215,6 +220,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         _sessionsUpdatedHandler = (s, e) => SessionsUpdated?.Invoke(s, e);
         _sessionUsageSnapshotUpdatedHandler = (s, e) =>
             SessionUsageSnapshotUpdated?.Invoke(s, e);
+        _sessionListChangedHandler = (s, e) => SessionListChanged?.Invoke(s, e);
         _sessionCommandCompletedHandler = (s, e) => SessionCommandCompleted?.Invoke(s, e);
         _chatMessageReceivedHandler = (s, e) => ChatMessageReceived?.Invoke(s, e);
         _agentEventReceivedHandler = (s, e) => AgentEventReceived?.Invoke(s, e);
@@ -242,6 +248,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         _client.StatusChanged += _statusChangedHandler;
         _client.SessionsUpdated += _sessionsUpdatedHandler;
         _client.SessionUsageSnapshotUpdated += _sessionUsageSnapshotUpdatedHandler;
+        _client.SessionListChanged += _sessionListChangedHandler;
         _client.SessionCommandCompleted += _sessionCommandCompletedHandler;
         _client.ChatMessageReceived += _chatMessageReceivedHandler;
         _client.AgentEventReceived += _agentEventReceivedHandler;
@@ -364,6 +371,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);
+    public Task<ChatHistoryInfo> RequestPendingChatHistoryAsync(string sessionKey, long pendingBefore,
+        long connectionEpoch, CancellationToken cancellationToken) =>
+        _client.RequestPendingChatHistoryAsync(sessionKey, pendingBefore, connectionEpoch, cancellationToken);
     public Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string sessionKey, ChatHistoryPageRequest page) =>
         _client.RequestChatHistoryAsync(sessionKey, page: page);
 
@@ -436,6 +446,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     public event EventHandler<ConnectionStatus>? StatusChanged;
     public event EventHandler<SessionInfo[]>? SessionsUpdated;
     public event EventHandler<SessionUsageSnapshot>? SessionUsageSnapshotUpdated;
+    public event EventHandler<SessionListChange>? SessionListChanged;
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
     public event EventHandler<ChatMessageInfo>? ChatMessageReceived;
     public event EventHandler<AgentEventInfo>? AgentEventReceived;
@@ -450,6 +461,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         _client.StatusChanged -= _statusChangedHandler;
         _client.SessionsUpdated -= _sessionsUpdatedHandler;
         _client.SessionUsageSnapshotUpdated -= _sessionUsageSnapshotUpdatedHandler;
+        _client.SessionListChanged -= _sessionListChangedHandler;
         _client.SessionCommandCompleted -= _sessionCommandCompletedHandler;
         _client.ChatMessageReceived -= _chatMessageReceivedHandler;
         _client.AgentEventReceived -= _agentEventReceivedHandler;
@@ -462,6 +474,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         ToolDetailsInvalidated = null;
         SessionsUpdated = null;
         SessionUsageSnapshotUpdated = null;
+        SessionListChanged = null;
         SessionCommandCompleted = null;
         ChatMessageReceived = null;
         AgentEventReceived = null;

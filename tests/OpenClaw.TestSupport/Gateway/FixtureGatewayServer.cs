@@ -83,6 +83,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private TaskCompletionSource? _heldSessionList;
     private TaskCompletionSource? _sessionListCaptured;
     private readonly Dictionary<string, Func<JsonElement, object>> _readResponses = new(StringComparer.Ordinal);
+    private Func<JsonElement, object>? _sessionListRead;
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -652,6 +653,18 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         lock (_sync) _readResponses[method] = response;
     }
 
+    public void OverrideSessionListRead(Func<JsonElement, object> response)
+    {
+        lock (_sync) _sessionListRead = response;
+    }
+
+    public Task PublishTranscriptEventAsync(string eventName, object payload)
+    {
+        if (eventName is not ("session.message" or "sessions.changed"))
+            throw new ArgumentException("Only transcript events are supported.", nameof(eventName));
+        return BroadcastAsync(eventName, payload);
+    }
+
     public void OverrideProfileRead(Func<JsonElement, object> response)
     {
         lock (_sync) _readResponses["users.self"] = response;
@@ -1178,9 +1191,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     }
                 }
                 Func<JsonElement, object>? readResponse;
-                lock (_sync) _readResponses.TryGetValue(method, out readResponse);
-                if (method == "sessions.list" && !id.StartsWith("search:", StringComparison.Ordinal))
-                    readResponse = null;
+                lock (_sync)
+                {
+                    if (method == "sessions.list" && !id.StartsWith("search:", StringComparison.Ordinal))
+                        readResponse = _sessionListRead;
+                    else
+                        _readResponses.TryGetValue(method, out readResponse);
+                }
                 JsonElement? agentsRoster;
                 bool agentsListUnsupported;
                 bool systemsInventoryUnavailable;

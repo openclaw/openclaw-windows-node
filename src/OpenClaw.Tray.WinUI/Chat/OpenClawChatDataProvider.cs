@@ -235,6 +235,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         _bridge.StatusChanged += OnStatusChanged;
         _bridge.SessionsUpdated += OnSessionsUpdated;
         _bridge.SessionUsageSnapshotUpdated += OnSessionUsageSnapshotUpdated;
+        _bridge.SessionListChanged += OnSessionListChanged;
         _bridge.SessionCommandCompleted += OnSessionCommandCompleted;
         _bridge.ChatMessageReceived += OnChatMessageReceived;
         _bridge.AgentEventReceived += OnAgentEventReceived;
@@ -1423,6 +1424,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             _bridge.StatusChanged -= OnStatusChanged;
             _bridge.SessionsUpdated -= OnSessionsUpdated;
             _bridge.SessionUsageSnapshotUpdated -= OnSessionUsageSnapshotUpdated;
+            _bridge.SessionListChanged -= OnSessionListChanged;
             _bridge.SessionCommandCompleted -= OnSessionCommandCompleted;
             _bridge.ChatMessageReceived -= OnChatMessageReceived;
             _bridge.AgentEventReceived -= OnAgentEventReceived;
@@ -1719,6 +1721,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             Publish(snapshot);
         }
         foreach (var threadId in _state.HistoryRecoveryCandidates(usage.Sessions))
+            _ = LoadHistoryAsync(threadId, force: true);
+    }
+
+    private void OnSessionListChanged(object? sender, SessionListChange change)
+    {
+        if (change is { TranscriptInvalidated: true, SessionKey: { Length: > 0 } threadId } &&
+            _state.CanRefreshInvalidatedTranscript(threadId, change.SessionId))
             _ = LoadHistoryAsync(threadId, force: true);
     }
 
@@ -2032,6 +2041,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             gate.RuntimeGeneration,
             assistantContent);
         PublishAssistantTransition(message, transition);
+        if (message.TranscriptIdleHint && _state.CanRecoverIdleSavedReply(message))
+            _ = LoadHistoryAsync(threadId, force: true);
     }
 
     private void PublishAssistantTransition(ChatMessageInfo message, ChatAssistantTransition transition)

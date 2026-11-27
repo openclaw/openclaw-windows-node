@@ -266,7 +266,8 @@ internal sealed class ChatConversationState
                 (_history.OlderPage(token.ThreadId) != older || plan.SessionId != older.SessionId))
                 return false;
             if (runLease is not null && (_history.ResolveSessionId(token.ThreadId) != runLease.SessionId ||
-                runLease.TranscriptTurnGeneration is not null && plan.SessionId != runLease.SessionId))
+                runLease.TranscriptTurnGeneration is not null && (plan.SessionId is not null || runLease.RunId is not null) &&
+                plan.SessionId != runLease.SessionId))
                 return false;
 
             var prior = GetOrCreateTimelineLocked(token.ThreadId);
@@ -315,10 +316,11 @@ internal sealed class ChatConversationState
     internal ChatHistoryRunLease? CaptureHistoryRun(string threadId)
     {
         lock (_gate)
-            return !_disposed && _status == ConnectionStatus.Connected ? CaptureHistoryRunLocked(threadId) : null;
+            return !_disposed && _status == ConnectionStatus.Connected
+                ? CaptureHistoryRunLocked(threadId, allowUnidentifiedTurn: true) : null;
     }
 
-    private ChatHistoryRunLease? CaptureHistoryRunLocked(string threadId)
+    private ChatHistoryRunLease? CaptureHistoryRunLocked(string threadId, bool allowUnidentifiedTurn = false)
     {
         if (_history.ResolveSessionId(threadId) is not { Length: > 0 } sessionId)
             return null;
@@ -326,8 +328,8 @@ internal sealed class ChatConversationState
             return activeRunId is not null && _lifecycle.ActiveRunSessionId(threadId) == sessionId
                 ? new(activeRunId, sessionId, _lifecycle.LifecycleStartSequence) : null;
 
-        // External channels can persist an answer without sending a chat/lifecycle terminal.
-        // Use only the current turn's matching wire identity to ask history, never to end the turn.
+        // A read begun before the assistant row arrives can establish its durable identity,
+        // but it can only complete the turn captured before that read.
         if (_queue.IsLocallyInitiated(threadId) || _queue.HasSendingMessages(threadId) ||
             _lifecycle.HasPendingAbort(threadId) || _lifecycle.IsThreadSuppressed(threadId) ||
             _reset.IsAwaitingUserMessage(threadId) ||
@@ -335,15 +337,42 @@ internal sealed class ChatConversationState
             !_entryMeta.TryGetValue(threadId, out var metadata))
             return null;
 
-        if (timeline.Entries.LastOrDefault(entry => entry.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant
-                || entry.StartsTurn) is not { Kind: ChatTimelineItemKind.Assistant, IsBackgroundFinal: false } reply ||
-            metadata.GetValueOrDefault(reply.Id) is not { LiveRunId: { Length: > 0 } runId, OpenClawSeq: { } replySeq } saved ||
-            saved.TranscriptSessionId != sessionId || _lifecycle.IsTerminalRun(threadId, runId) ||
-            timeline.Entries.LastOrDefault(entry => entry.Kind == ChatTimelineItemKind.User || entry.StartsTurn) is not { } boundary ||
-            metadata.GetValueOrDefault(boundary.Id)?.OpenClawSeq is not { } userSeq || userSeq >= replySeq)
+        if (timeline.Entries.LastOrDefault(entry => entry.Kind == ChatTimelineItemKind.User || entry.StartsTurn) is not { } boundary ||
+            metadata.GetValueOrDefault(boundary.Id) is not { OpenClawSeq: { } userSeq } prompt)
             return null;
-        return new(runId, sessionId, StartSequence: null, TranscriptTurnGeneration: timeline.TurnGeneration);
+
+        string? runId = null;
+        if (timeline.Entries.LastOrDefault(entry => entry.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant
+                || entry.StartsTurn) is { Kind: ChatTimelineItemKind.Assistant, IsBackgroundFinal: false } reply &&
+            metadata.GetValueOrDefault(reply.Id) is { TranscriptRunId: { Length: > 0 } savedRun, OpenClawSeq: { } replySeq } saved &&
+            saved.TranscriptSessionId == sessionId && replySeq > userSeq && !_lifecycle.IsTerminalRun(threadId, savedRun))
+            runId = savedRun;
+        return runId is not null || allowUnidentifiedTurn
+            ? new(runId, sessionId, StartSequence: null, TranscriptTurnGeneration: timeline.TurnGeneration,
+                TranscriptBoundarySequence: userSeq, TranscriptBoundaryMessageId: prompt.GatewayMessageId) : null;
     }
+
+    internal bool CanRefreshInvalidatedTranscript(string threadId, string? sessionId)
+    {
+        lock (_gate)
+            return !_disposed && _status == ConnectionStatus.Connected &&
+                (sessionId is null || _history.ResolveSessionId(threadId) == sessionId) &&
+                (_history.HasCurrentHistory(threadId) || _timelines.GetValueOrDefault(threadId)?.TurnActive == true);
+    }
+
+    internal bool CanRecoverIdleSavedReply(ChatMessageInfo message)
+    {
+        lock (_gate)
+            return !_disposed && _status == ConnectionStatus.Connected &&
+                SavedReplyRunId(message) is { } runId &&
+                CaptureHistoryRunLocked(message.SessionKey) is { } lease &&
+                lease.SessionId == message.TranscriptSessionId && lease.RunId == runId;
+    }
+
+    private static string? SavedReplyRunId(ChatMessageInfo message) =>
+        !message.IsTranscriptSnapshot || message.PersistedRunId is { } saved &&
+            message.RunId is { } envelope && envelope != saved
+            ? null : message.PersistedRunId ?? message.RunId;
 
     internal string[] HistoryRecoveryCandidates(SessionInfo[] sessions)
     {
@@ -365,11 +394,14 @@ internal sealed class ChatConversationState
             var threadId = token.ThreadId;
             if (!_history.IsCurrent(token, GetResetVersionLocked(threadId), _disposed) ||
                 sessionId != lease.SessionId || _history.ResolveSessionId(threadId) != lease.SessionId ||
-                terminal.SessionKey != threadId || terminal.RunId != lease.RunId ||
+                terminal.SessionKey != threadId || terminal.RunId is not { Length: > 0 } terminalRunId ||
+                lease.RunId is not null && terminalRunId != lease.RunId ||
                 (lease.StartSequence is { } start
                     ? !_lifecycle.TryGetActiveRun(threadId, out var activeRun) || activeRun != lease.RunId ||
-                      _lifecycle.HasRunStartedAfter(threadId, lease.RunId, start)
-                    : !hasNoQueuedInputs || CaptureHistoryRunLocked(threadId) != lease))
+                      _lifecycle.HasRunStartedAfter(threadId, terminalRunId, start)
+                    : !hasNoQueuedInputs || CaptureHistoryRunLocked(threadId) is not { } current ||
+                      current != (lease with { RunId = terminalRunId,
+                          TranscriptBoundaryMessageId = lease.TranscriptBoundaryMessageId ?? current.TranscriptBoundaryMessageId })))
                 return null;
             return ApplyAssistant(terminal, "", context, CurrentRuntimeGenerationLocked(threadId));
         }
@@ -2645,8 +2677,8 @@ internal sealed class ChatConversationState
                 {
                     Presentation = message.Presentation,
                     LiveRunId = message.RunId ?? activeRunId,
-                    TranscriptSessionId = !string.IsNullOrWhiteSpace(message.RunId)
-                        ? message.TranscriptSessionId : null,
+                    TranscriptSessionId = message.TranscriptSessionId,
+                    TranscriptRunId = SavedReplyRunId(message),
                 };
             var hasUsage = message.InputTokens is not null ||
                            message.OutputTokens is not null ||
@@ -3718,13 +3750,13 @@ internal sealed class ChatConversationState
                 existing = existing with { GatewayMessageId = gatewayMessageId };
 
             // History may have painted the row first. Retain wire provenance without rendering it twice.
-            if (message.IsTranscriptSnapshot && message.TranscriptSessionId is { Length: > 0 } sessionId &&
-                !string.IsNullOrWhiteSpace(message.RunId) && sessionId == _history.ResolveSessionId(threadId) &&
+            if (message.TranscriptSessionId is { Length: > 0 } sessionId &&
+                SavedReplyRunId(message) is { Length: > 0 } runId && sessionId == _history.ResolveSessionId(threadId) &&
                 openClawSeq is not null && existing.OpenClawSeq == openClawSeq &&
-                (existing.LiveRunId is null || existing.LiveRunId == message.RunId) &&
-                (existing.Presentation?.RunId is null || existing.Presentation.RunId == message.RunId))
+                (existing.TranscriptRunId is null || existing.TranscriptRunId == runId) &&
+                (existing.Presentation?.RunId is null || existing.Presentation.RunId == runId))
             {
-                existing = existing with { LiveRunId = message.RunId, TranscriptSessionId = sessionId };
+                existing = existing with { TranscriptRunId = runId, TranscriptSessionId = sessionId };
             }
             metadata[entry.Id] = existing;
             return true;
