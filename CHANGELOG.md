@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Select proof-pool regressions before allocating a Windows runner, while preserving fail-closed selection and strict CI Gate results.
 - CI: normalize each job's checkout for GitVersion once before building, so parallel project builds no longer fail reading `.git/config` or `.git/HEAD` while GitVersion 7 rewrites them.
 - Build: migrate GitVersion tooling, configuration, and CLI calls together to 7.0.1, retaining the tagged-release and alpha version checks and opting out of build-tool telemetry.
 - CI: batch main CodeQL scans every six hours while preserving PR, master, tag, and manual scans; include attribute-only changes in PR and master scanning, and restore fork PR scans by retiring the completed setup-migration gate.
