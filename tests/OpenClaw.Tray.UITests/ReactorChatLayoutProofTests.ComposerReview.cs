@@ -136,6 +136,8 @@ public sealed partial class ReactorChatLayoutProofTests
                 var values = FindDescendants<TextBlock>(popup).Select(text => text.Text).ToArray();
                 Assert.Contains("Input 120", values);
                 Assert.Contains("Output 0", values);
+                Assert.Equal("— tps · μ — · p95 —",
+                    FindControl<TextBlock>(popup, "ChatContextUsageThroughput").Text);
                 session.ViewModel.SetDraft("Typing must not rebuild context geometry.");
             });
             await SettleAsync();
@@ -144,6 +146,27 @@ public sealed partial class ReactorChatLayoutProofTests
                 var ring = FindControl<Button>(surface, "ChatContextUsage");
                 Assert.Same(latestGeometry, Assert.Single(FindDescendants<ShapePath>(ring), path => path.Opacity == 1).Data);
                 Assert.Same(popup, Assert.IsType<Flyout>(ring.Flyout).Content);
+            });
+
+            // A throughput change re-renders only the indicator; the open popover shows the
+            // reported session rate instead of the unavailable placeholder.
+            await ui.RunOnUIAsync(() => provider.PublishThroughput(snapshot.Threads[0].Id,
+                new ChatThroughputStats(42.26, 61.04, 38.5, 51.0, 3)));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                {
+                    var ring = FindControl<Button>(surface, "ChatContextUsage");
+                    return ring.Flyout is Flyout { IsOpen: true, Content: FrameworkElement content }
+                        && FindDescendants<TextBlock>(content).Any(text =>
+                            AutomationProperties.GetAutomationId(text) == "ChatContextUsageThroughput"
+                            && text.Text == "42.3 tps · μ 38.5 · p95 51.0");
+                }, "open popover shows the reported session throughput"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var flyout = Assert.IsType<Flyout>(FindControl<Button>(surface, "ChatContextUsage").Flyout);
+                Assert.True(flyout.IsOpen);
+                var content = Assert.IsAssignableFrom<FrameworkElement>(flyout.Content);
+                Assert.Equal("42.3 tps · μ 38.5 · p95 51.0",
+                    FindControl<TextBlock>(content, "ChatContextUsageThroughput").Text);
             });
             await ChangeFlyoutAsync(surface, "ChatContextUsage", false);
             foreach (var percent in new[] { 100, 25 })

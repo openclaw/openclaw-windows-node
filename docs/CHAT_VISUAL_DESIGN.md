@@ -1194,10 +1194,17 @@ the context snapshot, stale session-list counters never fill its missing fields.
 Without message usage, the whole session measurement is used. Header and counter
 columns wrap and grow vertically for translated or enlarged text. The value-equal
 indicator component keeps its arc geometry when only the draft changes.
+Below the latest-run values, a divider heads a "Tokens per second" section: one 12px
+line with the current rate, the mean (μ) and the 95th percentile (p95) over recent
+model calls in this session, with `~` marking the live characters-per-token estimate
+while a turn streams and the unavailable-value placeholder before the first sample.
+It subscribes to the provider's throughput notifications, so a streamed reply updates
+the open popover without re-rendering the transcript.
 The web popover's cost
 and plan-usage sections need Gateway data this client does not receive, so they are
 omitted. The ring is hidden when the context window size is unknown. There is no
-separate throughput or context strip below the composer.
+separate throughput or context strip below the composer; throughput lives in this
+popover.
 
 The context ring shows the latest assistant request measurement, not
 the sum of overlapping requests. Newer session snapshots may lower that value,

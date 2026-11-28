@@ -3038,6 +3038,12 @@ Use uma destas opções:
   <data name="Chat_ContextUsage_Title" xml:space="preserve">
     <value>Detalhes de uso do contexto</value>
   </data>
+  <data name="Chat_ContextUsage_Throughput" xml:space="preserve">
+    <value>Tokens por segundo</value>
+  </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>Tokens por segundo: última resposta do modelo, média (μ) e percentil 95 (p95) das chamadas de modelo recentes nesta sessão. ~ indica uma estimativa ao vivo durante a transmissão.</value>
+  </data>
   <data name="Chat_Composer_InputHelp" xml:space="preserve">
     <value>Enter para enviar, Shift+Enter para uma nova linha.</value>
   </data>

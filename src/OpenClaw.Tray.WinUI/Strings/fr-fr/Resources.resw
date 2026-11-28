@@ -3019,6 +3019,12 @@ Utilisez l'une de ces options :
   <data name="Chat_ContextUsage_Title" xml:space="preserve">
     <value>Détails d'utilisation du contexte</value>
   </data>
+  <data name="Chat_ContextUsage_Throughput" xml:space="preserve">
+    <value>Jetons par seconde</value>
+  </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>Jetons par seconde : dernière réponse du modèle, moyenne (μ) et 95e centile (p95) des appels de modèle récents de cette session. ~ indique une estimation en direct pendant la diffusion.</value>
+  </data>
   <data name="Chat_Composer_InputHelp" xml:space="preserve">
     <value>Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne.</value>
   </data>

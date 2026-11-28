@@ -3019,6 +3019,12 @@
   <data name="Chat_ContextUsage_Title" xml:space="preserve">
     <value>上下文使用详情</value>
   </data>
+  <data name="Chat_ContextUsage_Throughput" xml:space="preserve">
+    <value>每秒令牌数</value>
+  </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>每秒令牌数：本会话中最新模型响应、平均值 (μ) 以及近期模型调用的第 95 百分位数 (p95)。~ 表示流式传输期间的实时估算。</value>
+  </data>
   <data name="Chat_Composer_InputHelp" xml:space="preserve">
     <value>按 Enter 发送，按 Shift+Enter 换行。</value>
   </data>
