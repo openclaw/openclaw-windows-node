@@ -127,10 +127,9 @@ public class LocalizationValidationTests
         "PermissionsPage_Cap_SystemRun_Label",
         "PermissionsPage_Cap_SystemRun_Description",
         "PermissionsPage_NodeStatus_Disabled",
-        // Gateway info strings remain seeded in English across locales until
+        // Gateway info row labels remain seeded in English across locales until
         // the next translation pass; they are still present everywhere so
         // resource-key parity remains strict.
-        "SettingsPage_GatewayInfoExpander.Header",
         "SettingsPage_GatewayInfoLabel_Version.Text",
         "SettingsPage_GatewayInfoLabel_Protocol.Text",
         "SettingsPage_GatewayInfoLabel_AuthMode.Text",
@@ -1204,6 +1203,44 @@ public class LocalizationValidationTests
             $"Found {empties.Count} resw entries with empty/whitespace values: {string.Join(", ", empties)}");
     }
 
+    // Issue #2186: workspace navigation, account menu and application settings copy
+    // reported in English on zh-CN Windows.
+    [Theory]
+    [InlineData("zh-cn")]
+    [InlineData("zh-tw")]
+    public void WorkspaceNavigationAndSettingsCopy_IsTranslatedForChinese(string locale)
+    {
+        string[] keys =
+        [
+            "WorkspaceShell_Home",
+            "WorkspaceShell_Sessions",
+            "WorkspaceShell_SessionsLabel.Text",
+            "WorkspaceShell_NoSessions",
+            "WorkspaceShell_Settings",
+            "WorkspaceShell_PairDevice",
+            "WorkspaceShell_Help",
+            "WorkspaceShell_GetApps",
+            "WorkspaceShell_ConnectionTimeline",
+            "WorkspaceShell_About",
+            "DiagnosticsPage_Card_EventTimeline.Header",
+            "SettingsPage_GatewayInfoExpander.Header",
+            "SettingsRow_AutoStart_Description.Text",
+            "SettingsRow_GlobalHotkey_Description.Text",
+            "SettingsRow_LegacyChat_Description.Text",
+            "SettingsRow_Notifications_Description.Text",
+            "SettingsRow_NotifSound_Description.Text",
+            "SettingsRow_ScreenRec_Description.Text",
+            "SettingsRow_CamRec_Description.Text",
+        ];
+        var stringsDir = GetStringsDirectory();
+        var english = LoadResw(Path.Combine(stringsDir, "en-us", "Resources.resw"));
+        var localized = LoadResw(Path.Combine(stringsDir, locale, "Resources.resw"));
+
+        var untranslated = keys.Where(k => localized[k] == english[k]).ToList();
+
+        Assert.True(untranslated.Count == 0, $"{locale} still uses English for: {string.Join(", ", untranslated)}");
+    }
+
     [Fact]
     public void Resources_AreTranslatedAllOrNoneAcrossNonEnglishLocales()
     {
@@ -1244,7 +1281,8 @@ public class LocalizationValidationTests
                     "Dashboards_Title" or "HubWindow_NavDashboards.Content" or "Dashboards_Live" => ["nl-nl"],
                     // Usage page cognates: the natural term in these languages.
                     "Usage_Metric_Tokens" => ["nl-nl", "pt-br"],
-                    "Usage_Overview_Messages" or "Usage_Overview_Sessions" or "Usage_Sessions_Title" or "Usage_Options" => ["fr-fr"],
+                    "Usage_Overview_Messages" or "Usage_Overview_Sessions" or "Usage_Sessions_Title" or "Usage_Options"
+                        or "WorkspaceShell_Sessions" or "WorkspaceShell_SessionsLabel.Text" => ["fr-fr"],
                     "Usage_Facet_agent" or "Usage_Contributors_Agent" => ["fr-fr", "nl-nl"],
                     "Usage_Facet_model" => ["nl-nl"],
                     "Systems_Capability_Browser" or "Systems_Capability_Camera" => ["nl-nl"],

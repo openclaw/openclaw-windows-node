@@ -3805,7 +3805,7 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
     <value>Inspect local diagnostics</value>
   </data>
   <data name="DiagnosticsPage_Card_EventTimeline.Header" xml:space="preserve">
-    <value>Connection event timeline</value>
+    <value>Chronologie des événements de connexion</value>
   </data>
   <data name="DiagnosticsPage_Card_EventTimeline.Description" xml:space="preserve">
     <value>Live state-machine events, websocket frames, credential resolution, and pairing handshakes.</value>
@@ -3940,25 +3940,25 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
     <value>Back to Diagnostics</value>
   </data>
   <data name="SettingsRow_AutoStart_Description.Text" xml:space="preserve">
-    <value>Launch OpenClaw automatically when you sign in.</value>
+    <value>Lancer OpenClaw automatiquement à l’ouverture de session.</value>
   </data>
   <data name="SettingsRow_GlobalHotkey_Description.Text" xml:space="preserve">
-    <value>Enable global hotkeys (Ctrl+Alt+Shift+V for voice, Ctrl+Alt+; for settings).</value>
+    <value>Activer les raccourcis globaux (Ctrl+Alt+Shift+V pour la voix, Ctrl+Alt+; pour les paramètres).</value>
   </data>
   <data name="SettingsRow_LegacyChat_Description.Text" xml:space="preserve">
-    <value>When on, Chat hosts the gateway's web chat instead of the native Windows experience.</value>
+    <value>Lorsque cette option est activée, Chat affiche le chat web de la passerelle au lieu de l’expérience Windows native.</value>
   </data>
   <data name="SettingsRow_Notifications_Description.Text" xml:space="preserve">
-    <value>Show toast notifications for events you've subscribed to below.</value>
+    <value>Afficher des notifications pour les événements auxquels vous êtes abonné ci-dessous.</value>
   </data>
   <data name="SettingsRow_NotifSound_Description.Text" xml:space="preserve">
-    <value>Notification sound played alongside the toast.</value>
+    <value>Son émis avec la notification.</value>
   </data>
   <data name="SettingsRow_ScreenRec_Description.Text" xml:space="preserve">
-    <value>Lets agents capture the screen via screen.* commands.</value>
+    <value>Permet aux agents de capturer l’écran via les commandes screen.*.</value>
   </data>
   <data name="SettingsRow_CamRec_Description.Text" xml:space="preserve">
-    <value>Lets agents capture the camera via camera.* commands.</value>
+    <value>Permet aux agents de capturer la caméra via les commandes camera.*.</value>
   </data>
   <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
     <value>Permet aux agents de lire la localisation de l’appareil via les commandes location.*.</value>
@@ -6167,7 +6167,7 @@ Ouvrir Canaux dans le tableau de bord web.</value>
     <value>À propos</value>
   </data>
   <data name="SettingsPage_GatewayInfoExpander.Header" xml:space="preserve">
-    <value>Gateway info</value>
+    <value>Infos sur la passerelle</value>
   </data>
   <data name="SettingsPage_GatewayInfoLabel_Version.Text" xml:space="preserve">
     <value>Version</value>
@@ -7134,7 +7134,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_ProjectMetrics" xml:space="preserve"><value>Project metrics</value></data>
   <data name="WorkspaceShell_Priorities" xml:space="preserve"><value>Priorities</value></data>
   <data name="WorkspaceShell_Title" xml:space="preserve"><value>Workspace</value></data>
-  <data name="WorkspaceShell_Home" xml:space="preserve"><value>Home</value></data>
+  <data name="WorkspaceShell_Home" xml:space="preserve"><value>Accueil</value></data>
   <data name="WorkspaceShell_Agents" xml:space="preserve"><value>Agents</value></data>
   <data name="WorkspaceShell_AgentDetail" xml:space="preserve"><value>Agent</value></data>
   <data name="WorkspaceShell_WriterDetail" xml:space="preserve"><value>Agent</value></data>
@@ -7163,8 +7163,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_Permissions" xml:space="preserve"><value>Permissions</value></data>
   <data name="WorkspaceShell_Sandbox" xml:space="preserve"><value>Sandbox</value></data>
   <data name="WorkspaceShell_Debug" xml:space="preserve"><value>Diagnostics</value></data>
-  <data name="WorkspaceShell_Settings" xml:space="preserve"><value>Settings</value></data>
-  <data name="WorkspaceShell_About" xml:space="preserve"><value>About OpenClaw</value></data>
+  <data name="WorkspaceShell_Settings" xml:space="preserve"><value>Paramètres</value></data>
+  <data name="WorkspaceShell_About" xml:space="preserve"><value>À propos d’OpenClaw</value></data>
   <data name="WorkspaceShell_AgentsDescription" xml:space="preserve"><value>Your gateway agents and their recent conversations.</value></data>
   <data name="WorkspaceShell_AgentDetailDescription" xml:space="preserve"><value>Agent workspace and recent work.</value></data>
   <data name="WorkspaceShell_WriterDetailDescription" xml:space="preserve"><value>Agent workspace and recent work.</value></data>
@@ -7182,7 +7182,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_MeetingsDescription" xml:space="preserve"><value>Meeting workflows provided by your gateway.</value></data>
   <data name="WorkspaceShell_NoAgents" xml:space="preserve"><value>No agents loaded</value></data>
   <data name="WorkspaceShell_SelectAssistant" xml:space="preserve"><value>Select assistant</value></data>
-  <data name="WorkspaceShell_NoSessions" xml:space="preserve"><value>No conversations to show.</value></data>
+  <data name="WorkspaceShell_NoSessions" xml:space="preserve"><value>Aucune conversation à afficher.</value></data>
   <data name="WorkspaceShell_ConnectionRequired" xml:space="preserve"><value>Connect a gateway to load agents and conversations.</value></data>
   <data name="WorkspaceShell_ConnectionInfo.Message" xml:space="preserve"><value>Connect a gateway to load live workspace data.</value></data>
   <data name="WorkspaceShell_SessionFailed" xml:space="preserve"><value>The gateway could not create a new session. Refresh the list before retrying.</value></data>
@@ -7251,16 +7251,16 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WorkspaceShell_AgentSettings" xml:space="preserve"><value>Agent settings</value></data>
   <data name="WorkspaceShell_AgentFiles" xml:space="preserve"><value>Workspace files</value></data>
   <data name="WorkspaceShell_ManageConnection" xml:space="preserve"><value>Manage connection</value></data>
-  <data name="WorkspaceShell_ConnectionTimeline" xml:space="preserve"><value>Connection event timeline</value></data>
+  <data name="WorkspaceShell_ConnectionTimeline" xml:space="preserve"><value>Chronologie des événements de connexion</value></data>
   <data name="WorkspaceShell_PairedDevices" xml:space="preserve"><value>Paired devices</value></data>
-  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Pair a device</value></data>
+  <data name="WorkspaceShell_PairDevice" xml:space="preserve"><value>Jumeler un appareil</value></data>
   <data name="WorkspaceShell_OpenDashboard" xml:space="preserve"><value>Open gateway dashboard</value></data>
-  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Help &amp; about</value></data>
+  <data name="WorkspaceShell_Help" xml:space="preserve"><value>Aide et à propos</value></data>
   <data name="WorkspaceShell_Documentation" xml:space="preserve"><value>Documentation</value></data>
   <data name="WorkspaceShell_Support" xml:space="preserve"><value>Obtenir de l’assistance</value></data>
   <data name="WorkspaceShell_Community" xml:space="preserve"><value>Community</value></data>
   <data name="WorkspaceShell_ReleaseNotes" xml:space="preserve"><value>Release notes</value></data>
-  <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Get apps</value></data>
+  <data name="WorkspaceShell_GetApps" xml:space="preserve"><value>Obtenir les applications</value></data>
   <data name="WorkspaceShell_AccountNoGateway" xml:space="preserve"><value>Aucune passerelle</value></data>
   <data name="WorkspaceShell_AccountGatewayVersionFormat" xml:space="preserve"><value>{0} · v{1}</value></data>
   <data name="WorkspaceShell_AccountCurrentGateway" xml:space="preserve"><value>Passerelle actuelle</value></data>
