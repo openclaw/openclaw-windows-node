@@ -302,11 +302,7 @@ internal static class ChatEventMapper
             "approval-resolved" => new ChatProgressEvent("Working"),
             "fallback" or "fallback_cleared" => MapFallback(evt, getString),
             "end" => new ChatTurnEndEvent(),
-            "error" => new ChatErrorEvent(
-                evt.Summary ??
-                (evt.Data.TryGetProperty("message", out var message)
-                    ? message.GetString() ?? "Agent error"
-                    : "Agent error")),
+            "error" => new ChatErrorEvent(ResolveErrorText(evt)),
             _ => null,
         };
     }
@@ -689,7 +685,7 @@ internal static class ChatEventMapper
         return StringProperty(evt.Data, "state").ToLowerInvariant() switch
         {
             "done" => new ChatTurnEndEvent(),
-            "error" => new ChatErrorEvent(evt.Summary ?? "Agent error"),
+            "error" => new ChatErrorEvent(ResolveErrorText(evt)),
             _ => null,
         };
     }
@@ -749,4 +745,26 @@ internal static class ChatEventMapper
         property.ValueKind == JsonValueKind.String
             ? property.GetString() ?? string.Empty
             : string.Empty;
+
+    /// <summary>
+    /// Display form of a Gateway-supplied failure explanation: log redaction (URL query secrets, key=value
+    /// credentials, local identity) followed by the display redaction and length cap that the terminal chat
+    /// frame's error text already gets (bare provider keys, bearer tokens).
+    /// </summary>
+    internal static string SanitizeGatewayErrorText(string error) =>
+        NativeToolProjector.SanitizeToolDisplayValue(TokenSanitizer.SanitizeLogMessage(error));
+
+    private static string ResolveErrorText(AgentEventInfo evt)
+    {
+        if (!string.IsNullOrWhiteSpace(evt.Summary))
+            return evt.Summary;
+
+        // Gateway lifecycle failures carry their explanation in data.error.
+        var error = StringProperty(evt.Data, "error");
+        if (!string.IsNullOrWhiteSpace(error))
+            return SanitizeGatewayErrorText(error);
+
+        var message = StringProperty(evt.Data, "message");
+        return string.IsNullOrWhiteSpace(message) ? "Agent error" : message;
+    }
 }

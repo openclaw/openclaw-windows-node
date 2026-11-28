@@ -2845,7 +2845,8 @@ internal sealed class ChatConversationState
                     !_timelines[threadId].Entries.Any(entry =>
                         entry.Kind == ChatTimelineItemKind.Status &&
                         GetOrCreateThreadMetaLocked(threadId).GetValueOrDefault(entry.Id)?
-                            .Presentation?.RunFailure?.RunId == message.RunId))
+                            .Presentation?.RunFailure?.RunId == message.RunId) &&
+                    !HasRunErrorStatusLocked(threadId, message.RunId, message.ErrorMessage))
                     ApplyEventLocked(threadId, new ChatErrorEvent(
                         NativeToolProjector.SanitizeToolDisplayValue(message.ErrorMessage) ?? ""),
                         BuildLiveMetaLocked(threadId, message.Ts) with { LiveRunId = message.RunId });
@@ -2854,6 +2855,24 @@ internal sealed class ChatConversationState
                 message.IsTranscriptSnapshot && !isTerminal,
                 BuildSnapshotLocked(context), activeRunId, completedRunId, completesTurn);
         }
+    }
+
+    /// <summary>
+    /// True when this run's lifecycle or job failure already put the same Gateway explanation on the timeline,
+    /// so the terminal chat frame that repeats it must not add a second status.
+    /// </summary>
+    private bool HasRunErrorStatusLocked(string threadId, string? runId, string errorMessage)
+    {
+        if (string.IsNullOrEmpty(runId))
+            return false;
+        var shown = ChatContentFormatting.TruncateForChatEntry(
+            ChatEventMapper.SanitizeGatewayErrorText(errorMessage));
+        var metadata = GetOrCreateThreadMetaLocked(threadId);
+        return _timelines[threadId].Entries.Any(entry =>
+            entry.Kind == ChatTimelineItemKind.Status &&
+            entry.Tone == ChatTone.Error &&
+            string.Equals(entry.Text, shown, StringComparison.Ordinal) &&
+            metadata.GetValueOrDefault(entry.Id)?.LiveRunId == runId);
     }
 
     private void ApplyAssistantContentLocked(

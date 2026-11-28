@@ -2290,6 +2290,90 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal("failed-run", provider.GetEntryMetadata("main")[row.Id].Presentation?.RunFailure?.RunId);
     }
 
+    [Theory]
+    [InlineData("lifecycle", "phase")]
+    [InlineData("job", "state")]
+    public async Task GatewayFailureReason_AppearsOnceWhenTerminalChatFrameRepeatsIt(string stream, string stateField)
+    {
+        const string reason = "Couldn't connect to the AI service. Check your connection, then try again.";
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "failed-run"));
+
+        bridge.RaiseAgent(MakeAgentEvent(
+            stream,
+            JsonSerializer.Serialize(new Dictionary<string, string> { [stateField] = "error", ["error"] = reason }),
+            runId: "failed-run"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", RunId = "failed-run",
+            State = "error", ErrorMessage = reason,
+        });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        Assert.False(timeline.TurnActive);
+        Assert.Single(timeline.Entries, entry => entry.Kind == ChatTimelineItemKind.Status && entry.Text == reason);
+        Assert.DoesNotContain(timeline.Entries, entry => entry.Text == "Agent error");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GatewayFailureReason_WithRedactedUrlAppearsOnceInEitherArrivalOrder(bool chatFrameFirst)
+    {
+        const string reason = "Request to https://provider.example/v1/chat?api_key=querysecretvalue failed";
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "failed-run"));
+        var lifecycle = MakeAgentEvent(
+            "lifecycle",
+            JsonSerializer.Serialize(new Dictionary<string, string> { ["phase"] = "error", ["error"] = reason }),
+            runId: "failed-run");
+        var terminal = new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", RunId = "failed-run",
+            State = "error", ErrorMessage = reason,
+        };
+
+        if (chatFrameFirst)
+            bridge.RaiseChat(terminal);
+        bridge.RaiseAgent(lifecycle);
+        if (!chatFrameFirst)
+            bridge.RaiseChat(terminal);
+
+        var timeline = snapshots[^1].Timelines["main"];
+        Assert.False(timeline.TurnActive);
+        var row = Assert.Single(timeline.Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.Status && entry.Tone == ChatTone.Error);
+        Assert.StartsWith("Request to https://", row.Text);
+        Assert.DoesNotContain("querysecretvalue", row.Text);
+    }
+
+    [Fact]
+    public async Task GatewayFailureReason_KeepsADifferentTerminalChatError()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "failed-run"));
+
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"error","error":"model unreachable"}""", runId: "failed-run"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", RunId = "failed-run",
+            State = "error", ErrorMessage = "provider returned 503",
+        });
+
+        var entries = snapshots[^1].Timelines["main"].Entries;
+        Assert.Single(entries, entry => entry.Text == "model unreachable");
+        Assert.Single(entries, entry => entry.Text == "provider returned 503");
+    }
+
     [Fact]
     public async Task RunFailureNotice_DoesNotRemoveAnotherRunsError()
     {
@@ -11185,7 +11269,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         snapshots.Clear();
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
-        var evt = MakeAgentEvent("lifecycle", """{"phase":"error","message":"model unreachable"}""", runId: "run-1");
+        var evt = MakeAgentEvent("lifecycle", """{"phase":"error","error":"model unreachable"}""", runId: "run-1");
         bridge.RaiseAgent(evt);
 
         var timeline = snapshots[^1].Timelines["main"];
