@@ -10309,4 +10309,20 @@
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>跟踪此对话中委派的工作。</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此会话发布的小组件和选项卡。</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此对话暂无可用的面板。</value></data>
+  <data name="WidgetTitle" xml:space="preserve"><value>OpenClaw 跟踪器</value></data>
+  <data name="WidgetDescription" xml:space="preserve"><value>通过 OpenClaw 在 Windows 小组件面板中跟踪信息。</value></data>
+  <data name="WidgetEmpty" xml:space="preserve"><value>请让 OpenClaw 创建小组件，然后在此选择跟踪器。</value></data>
+  <data name="WidgetSelect" xml:space="preserve"><value>跟踪器</value></data>
+  <data name="WidgetShow" xml:space="preserve"><value>显示跟踪器</value></data>
+  <data name="WidgetStale" xml:space="preserve"><value>已过期。上次观测时间：</value></data>
+  <data name="WidgetSource" xml:space="preserve"><value>打开来源</value></data>
+  <data name="WidgetError" xml:space="preserve"><value>小组件数据不可用。请查看 Companion 诊断信息。</value></data>
+  <data name="WidgetLightingDisabled" xml:space="preserve"><value>灯光控制需要本地授权。检查或更改灯光可能会显示驱动程序窗口。</value></data>
+  <data name="WidgetLightingReady" xml:space="preserve"><value>上次驱动程序检查：{0} 个设备。控件仅针对第一个设备。</value></data>
+  <data name="WidgetLightingNoDevices" xml:space="preserve"><value>未报告兼容的灯光设备。</value></data>
+  <data name="WidgetLightingAcknowledged" xml:space="preserve"><value>驱动程序已确认请求。尚未验证实际灯光效果。</value></data>
+  <data name="WidgetLightingReleased" xml:space="preserve"><value>此小组件提供程序已释放其驱动程序。</value></data>
+  <data name="WidgetLightingUnavailable" xml:space="preserve"><value>灯光驱动程序不可用。请在本地安装并授权。</value></data>
+  <data name="WidgetLightingBusy" xml:space="preserve"><value>另一个小组件提供程序正在控制此配置文件的灯光驱动程序。</value></data>
+  <data name="WidgetLightingFailed" xml:space="preserve"><value>灯光请求失败。请检查驱动程序和设备是否可用。</value></data>
 </root>

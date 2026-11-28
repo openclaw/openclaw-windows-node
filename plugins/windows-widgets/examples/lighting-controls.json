@@ -1,0 +1,24 @@
+{
+  "card": {
+    "type": "AdaptiveCard",
+    "version": "1.6",
+    "header": "Lighting",
+    "body": [
+      { "type": "TextBlock", "text": "Controls target the driver's first discovered device.", "wrap": true },
+      {
+        "type": "ActionSet",
+        "actions": [
+          { "type": "Action.Execute", "title": "Check devices", "verb": "widget.lighting", "associatedInputs": "none", "data": { "operation": "status" } },
+          { "type": "Action.Execute", "title": "Blue", "verb": "widget.lighting", "associatedInputs": "none", "data": { "operation": "color", "color": "#0078D4" } }
+        ]
+      },
+      {
+        "type": "ActionSet",
+        "actions": [
+          { "type": "Action.Execute", "title": "Wave", "verb": "widget.lighting", "associatedInputs": "none", "data": { "operation": "preset", "preset": "wave", "color": "#0078D4", "accentColor": "#FFFFFF" } },
+          { "type": "Action.Execute", "title": "Release driver", "verb": "widget.lighting", "associatedInputs": "none", "data": { "operation": "release" } }
+        ]
+      }
+    ]
+  }
+}

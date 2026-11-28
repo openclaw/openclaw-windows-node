@@ -1,0 +1,4 @@
+/local/
+*.local.json
+.env
+.env.*

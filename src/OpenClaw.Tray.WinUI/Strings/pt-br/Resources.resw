@@ -10362,4 +10362,20 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Acompanhe o trabalho delegado desta conversa.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets e guias publicados por esta sessão.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Ainda não há painéis disponíveis para esta conversa.</value></data>
+  <data name="WidgetTitle" xml:space="preserve"><value>Monitor do OpenClaw</value></data>
+  <data name="WidgetDescription" xml:space="preserve"><value>Acompanhe informações com o OpenClaw no painel de widgets do Windows.</value></data>
+  <data name="WidgetEmpty" xml:space="preserve"><value>Peça ao OpenClaw para criar um widget e selecione o monitor aqui.</value></data>
+  <data name="WidgetSelect" xml:space="preserve"><value>Monitor</value></data>
+  <data name="WidgetShow" xml:space="preserve"><value>Mostrar monitor</value></data>
+  <data name="WidgetStale" xml:space="preserve"><value>Desatualizado. Última observação:</value></data>
+  <data name="WidgetSource" xml:space="preserve"><value>Abrir fonte</value></data>
+  <data name="WidgetError" xml:space="preserve"><value>Os dados do widget estão indisponíveis. Verifique os diagnósticos do Companion.</value></data>
+  <data name="WidgetLightingDisabled" xml:space="preserve"><value>Os controles de iluminação exigem consentimento local. Verificar ou alterar as luzes pode mostrar a janela do driver.</value></data>
+  <data name="WidgetLightingReady" xml:space="preserve"><value>Última verificação do driver: {0} dispositivos. Os controles usam o primeiro dispositivo.</value></data>
+  <data name="WidgetLightingNoDevices" xml:space="preserve"><value>Nenhum dispositivo de iluminação compatível foi informado.</value></data>
+  <data name="WidgetLightingAcknowledged" xml:space="preserve"><value>O driver confirmou a solicitação. A iluminação física não foi verificada.</value></data>
+  <data name="WidgetLightingReleased" xml:space="preserve"><value>Este provedor de widgets liberou seu driver.</value></data>
+  <data name="WidgetLightingUnavailable" xml:space="preserve"><value>Driver de iluminação indisponível. Instale e autorize localmente.</value></data>
+  <data name="WidgetLightingBusy" xml:space="preserve"><value>Outro provedor de widgets controla o driver de iluminação deste perfil.</value></data>
+  <data name="WidgetLightingFailed" xml:space="preserve"><value>A solicitação de iluminação falhou. Verifique o driver e a disponibilidade dos dispositivos.</value></data>
 </root>

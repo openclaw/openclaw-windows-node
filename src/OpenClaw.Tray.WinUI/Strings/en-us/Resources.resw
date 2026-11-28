@@ -10380,4 +10380,20 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Follow delegated work from this conversation.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets and tabs this session published.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>No panels are available for this conversation yet.</value></data>
+  <data name="WidgetTitle" xml:space="preserve"><value>OpenClaw Tracker</value></data>
+  <data name="WidgetDescription" xml:space="preserve"><value>Track information with OpenClaw on your Windows Widgets Board.</value></data>
+  <data name="WidgetEmpty" xml:space="preserve"><value>Ask OpenClaw to create a widget, then select its tracker here.</value></data>
+  <data name="WidgetSelect" xml:space="preserve"><value>Tracker</value></data>
+  <data name="WidgetShow" xml:space="preserve"><value>Show tracker</value></data>
+  <data name="WidgetStale" xml:space="preserve"><value>Out of date. Last observation:</value></data>
+  <data name="WidgetSource" xml:space="preserve"><value>Open source</value></data>
+  <data name="WidgetError" xml:space="preserve"><value>Widget data is unavailable. Check Companion diagnostics.</value></data>
+  <data name="WidgetLightingDisabled" xml:space="preserve"><value>Lighting controls require local consent. Checking or changing lights may show the driver window.</value></data>
+  <data name="WidgetLightingReady" xml:space="preserve"><value>Last driver check: {0} devices. Controls target the first device.</value></data>
+  <data name="WidgetLightingNoDevices" xml:space="preserve"><value>No compatible lighting devices reported.</value></data>
+  <data name="WidgetLightingAcknowledged" xml:space="preserve"><value>The driver acknowledged the request. Physical lighting is not verified.</value></data>
+  <data name="WidgetLightingReleased" xml:space="preserve"><value>This widget provider released its driver.</value></data>
+  <data name="WidgetLightingUnavailable" xml:space="preserve"><value>Lighting driver unavailable. Install and authorize it locally.</value></data>
+  <data name="WidgetLightingBusy" xml:space="preserve"><value>Another widget provider owns this profile's lighting driver.</value></data>
+  <data name="WidgetLightingFailed" xml:space="preserve"><value>Lighting request failed. Check the driver and device availability.</value></data>
 </root>

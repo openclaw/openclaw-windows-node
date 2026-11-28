@@ -3,10 +3,11 @@
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap desktop com rescap">
+  IgnorableNamespaces="uap uap3 desktop com rescap">
 
   <!-- Version is patched at build time by the SyncAppxManifestVersionTarget in
        OpenClaw.Tray.WinUI.csproj from $(Version) (see docs/VERSIONING.md).
@@ -54,6 +55,46 @@
       </uap:VisualElements>
 
       <Extensions>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="OpenClaw.Tray.WinUI.exe"
+                           Arguments="--widget-provider"
+                           DisplayName="OpenClaw Widget Provider">
+              <com:Class Id="45A6BDF0-B332-4861-AB0E-2A524D421EA1"
+                         DisplayName="OpenClaw Widget Provider" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+
+        <uap3:Extension Category="windows.appExtension">
+          <uap3:AppExtension Name="com.microsoft.windows.widgets"
+                            DisplayName="ms-resource:WidgetTitle"
+                            Id="OpenClawWidgets" PublicFolder="Assets">
+            <uap3:Properties>
+              <WidgetProvider>
+                <ProviderIcons><Icon Path="Assets\StoreLogo.png" /></ProviderIcons>
+                <Activation><CreateInstance ClassId="45A6BDF0-B332-4861-AB0E-2A524D421EA1" /></Activation>
+                <Definitions>
+                  <Definition Id="OpenClawTracker" DisplayName="ms-resource:WidgetTitle"
+                              Description="ms-resource:WidgetDescription" AllowMultiple="true" IsCustomizable="true">
+                    <Capabilities>
+                      <Capability><Size Name="small" /></Capability>
+                      <Capability><Size Name="medium" /></Capability>
+                      <Capability><Size Name="large" /></Capability>
+                    </Capabilities>
+                    <ThemeResources>
+                      <Icons><Icon Path="Assets\StoreLogo.png" /></Icons>
+                      <Screenshots>
+                        <Screenshot Path="Assets\WidgetPreview.png" DisplayAltText="ms-resource:WidgetDescription" />
+                      </Screenshots>
+                    </ThemeResources>
+                  </Definition>
+                </Definitions>
+              </WidgetProvider>
+            </uap3:Properties>
+          </uap3:AppExtension>
+        </uap3:Extension>
+
         <!-- Protocol activation for openclaw:// deep links -->
         <uap:Extension Category="windows.protocol">
           <uap:Protocol Name="openclaw">

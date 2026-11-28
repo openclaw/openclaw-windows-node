@@ -1661,6 +1661,80 @@ The named `flyout` shadow uses an 8px downward offset, 16px CSS blur and 14% bla
 
 ## Components
 
+### Windows Widgets Board cards
+
+The experimental native widget provider emits Adaptive Cards, not WinUI XAML.
+Windows' widget host owns its frame, fonts, light/dark and accessibility
+palette. Do not bind preview hex colors or invent WinUI resource lookups in
+card JSON. Port `surface`/`paper` to host `default`/`emphasis` container styles,
+`ink` to the host's default text color and `accent` to its `Accent` text color.
+Use semantic Adaptive Card sizes and spacing rather than fixed pixel values.
+
+The agent designs a complete Adaptive Card from the user's description, not a
+named preset. Use native semantic colors, sizes, spacing, containers, images,
+background imagery and responsive template conditions. Public artwork is
+content, not a theme-color token. Use `$host.widgetSize` and `$host.hostTheme`
+for size/theme variants and `$host.isSettingsPayload` for customization. Respect
+small-card bounds and retain legible contrast over artwork. Header overrides
+remain host-dependent. Native inputs and actions may update declared local
+per-instance state; they never execute arbitrary generated code or change source
+facts. The provider appends its own observation/source controls outside authored
+body content. Actual rendering, image loading, clipping, action support and
+size/theme parity require native proof, not a generic card preview.
+
+The plugin's read-only `capabilities` action and
+[Adaptive Card toolbox reference](plugins/windows-widgets/skills/windows-widgets/references/adaptive-card-toolbox.md)
+expose the inspected Designer authoring surface. Newer badges, charts, progress,
+paging and layout objects are host-dependent, not a reason to invent a
+parallel Windows renderer or claim parity. Prefer standard native elements
+with readable fallbacks; unsupported layout properties must retain a usable
+ordinary container/column structure. Chart/progress visuals require real
+underlying data, not fabricated history or percentages from a boolean.
+
+Timestamped source graphs may use a bounded, locally rendered PNG when native
+chart support is unknown. The plot is deliberately monochrome data artwork,
+not app chrome: `PLOT_SURFACE` is white, `PLOT_INK` is near-black (32/255) and
+`PLOT_GRID` is light gray (208/255), independent of the host theme. This opaque
+paper plot preserves its own contrast in either theme; it does not claim
+forced-color adaptation. Keep latest value, units and range in native text and
+provide image alternative text. Use actual timestamps, do not connect declared
+gaps or invent equal spacing, and do not paint labels or clinical target bands
+into the image. Small retains the value and footer without the optional graph.
+Current-head native decoding, clipping and accessibility remain required proof.
+
+Lighting action colors are literal hardware request data, not UI theme tokens.
+Keep controls as host-native actions, split into short rows rather than assuming
+the host wraps a wide action strip. The provider appends localized trusted
+feedback before the source footer; never present a driver acknowledgment or old
+device check as current physical-effect telemetry.
+
+The provider-owned source action is a centered text hyperlink after the content,
+not a standard bordered button. Use a host-rendered `RichTextBlock`/`TextRun`
+with `selectAction` and semantic `Small` text and spacing; the host owns link
+color, focus and interaction. Group the observation timestamp and source link
+in one stretch container aligned to `Bottom`, with no divider. Keep the two
+rows together at the bottom of the available content area, rather than stretching
+only the link away from the timestamp. Do not add spacer rows or force a minimum
+card height. Authored actions and tracker selection stay above this footer.
+Use the native card `header` extension for a requested widget title on supporting
+hosts, rather than repeating the heading in the body. The default Small layout omits optional title/detail rows
+while retaining the observed title, value and timestamp in compact metadata.
+Windows owns tile dimensions: use Small for a short tracker, not a Medium tile
+with a forced-height template. A template cannot shrink the Windows frame.
+
+For prompt-authored glanceable trackers, follow the Weather widget's hierarchy:
+one recognizable illustration beside a concise status, restrained supporting
+copy and no invented forecast/dashboard rows. Use a native auto/stretch
+`ColumnSet`, semantic type/spacing and the host-owned frame rather than stacked
+headings, decorative accent text or nested cards. A requested illustrated treatment
+uses artwork, not a new theme-color token or preset catalog. Confine
+dark artwork and semantic `Light` text to the hero container by default, leaving
+the provider-owned observation/source footer on the plain host surface. Shrink
+the illustration and omit optional supporting copy on small cards; never hide
+source/freshness to make the art fit. Contrast and size parity still need native
+proof. The plugin's [adaptable example](plugins/windows-widgets/examples/artwork-status.json)
+contains no bundled artwork and does not change existing designs automatically.
+
 Reuse [component patterns](.agents/design/components.jsonc); these describe design intent, not shipping code.
 Optional click-through flows would live in `.agents/design/prototypes.jsonc`; none are defined yet.
 

@@ -7,6 +7,23 @@ using System.Text;
 using System.Text.Json;
 using OpenClaw.Shared.FileTransfer;
 
+if (args is ["--widget-lighting-fixture", var protocolLog, var lightingMode])
+{
+    await File.WriteAllTextAsync(protocolLog, $"START {Environment.ProcessId}{Environment.NewLine}");
+    if (lightingMode != "quiet") { Console.WriteLine("READY"); Console.Out.Flush(); }
+    while (await Console.In.ReadLineAsync() is { } command)
+    {
+        await File.AppendAllTextAsync(protocolLog, command + Environment.NewLine);
+        if (command == "QUIT") { Console.WriteLine("QUIT"); Console.Out.Flush(); return 0; }
+        Console.Error.Write(new string('e', 4096));
+        if (lightingMode == "oversized") Console.WriteLine(new string('x', 65_537));
+        else if (lightingMode == "reject") Console.WriteLine("ERROR synthetic rejection");
+        else Console.WriteLine(command == "GET_ALL_LAYOUTS" ? """OK {"devices":[{"lamp_count":3}]}""" : "OK synthetic acknowledgment");
+        Console.Out.Flush();
+    }
+    return 0;
+}
+
 if (args is ["--echo-args", .. var echoedArgs])
 {
     Console.WriteLine(JsonSerializer.Serialize(echoedArgs));

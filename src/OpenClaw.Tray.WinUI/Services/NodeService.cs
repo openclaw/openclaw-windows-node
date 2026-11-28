@@ -348,6 +348,15 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         Register(_systemCapability);
 
+        if (Environment.GetEnvironmentVariable(WidgetCapability.OptInVariable) == "1")
+        {
+            Register(new WidgetCapability(
+                _logger,
+                new OpenClaw.Shared.Widgets.WidgetSnapshotStore(AppIdentity.ResolveRoamingDataDirectory(), _logger),
+                OpenClawTray.Widgets.NativeWidgetProvider.Publish,
+                () => Environment.GetEnvironmentVariable(WidgetCapability.OptInVariable) == "1"));
+        }
+
         if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
         {
             _canvasCapability = new CanvasCapability(_logger, _fileOperations!.ReadContentAsync);
