@@ -226,6 +226,12 @@ and reparse-point paths remain unsupported.
 Remove an out-of-scope portable/worktree instance's startup registration through
 that instance before cleanup; matching a startup name alone does not authorize
 the script to change another instance's registration.
+Gateway cleanup tasks are removed after native teardown and before package
+removal, because an armed task reacts to package removal and could unregister a
+WSL distro the plan preserves. Their folders are deleted afterwards. Do not
+delete a cleanup folder while its task is registered: the task can no longer run
+or unregister itself, and tasks that start PowerShell directly keep opening a
+console every minute.
 
 Already-uninstalled native packages with orphan `session.json` records need the
 matching package repaired/reinstalled for supported teardown. The script does not
@@ -304,6 +310,7 @@ size if relevant, and preserve/remove decision. Include:
 | Local AI | Each selected local profile's `LocalAI\state.json`, runtime, downloads, logs, legacy models, active cached model, and additional assets. |
 | Isolated profiles | Paths printed by launchers or explicitly supplied by the user, including selected children of `%TEMP%\OpenClawTray` or a session's `files` directory. Never discover targets by recursively sweeping all sessions. |
 | Startup | Exact Run values `OpenClawTray` / `OpenClawTray-Dev`; tasks `OpenClaw Companion` / `OpenClaw Companion (Dev)`. Verify task action and principal. Inventory services without deleting by name prefix. |
+| Gateway cleanup | Per-user tasks `OpenClaw Gateway cleanup - <SID> - <Companion family>` and `%USERPROFILE%\.openclaw-companion\cleanup\<Companion family>`. Verify the task's action and principal. Dev families need `-IncludeDev`. |
 | WSL | Exact distro names and whether any target is in use. Native teardown does not imply WSL removal. |
 | Test leftovers | `OpenClawTrayTest`, `OpenClawTests`, and HKCU `Software\OpenClawTests` / `Software\OpenClawDetectorTests` only if specifically identified and included. |
 
