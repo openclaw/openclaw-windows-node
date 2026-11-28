@@ -1,3 +1,5 @@
+using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -22,7 +24,15 @@ public sealed partial class SetupStepRow : UserControl
     private bool _detailExpanded;
     private Storyboard? _detailAnimation;
 
-    public SetupStepRow() => InitializeComponent();
+    public SetupStepRow()
+    {
+        InitializeComponent();
+        Unloaded += (_, _) =>
+        {
+            StopPop();
+            SetDetailExpanded(_hovered || _state == OnboardingDesignStepState.Current, animate: false);
+        };
+    }
 
     public OnboardingDesignStepState State => _state;
 
@@ -45,6 +55,8 @@ public sealed partial class SetupStepRow : UserControl
     internal void Apply(OnboardingDesignStepState state, bool animate, bool highContrast)
     {
         var becameCurrent = state == OnboardingDesignStepState.Current && _state != state;
+        if (!animate || state != _state)
+            StopPop();
         _state = state;
         VisualStateManager.GoToState(this, state switch
         {
@@ -119,32 +131,24 @@ public sealed partial class SetupStepRow : UserControl
     // The new current node pops toward 16 DIPs with a small overshoot, then settles at 12.
     private void Pop()
     {
-        var x = PopFrames();
-        Storyboard.SetTarget(x, NodeScale);
-        Storyboard.SetTargetProperty(x, nameof(Microsoft.UI.Xaml.Media.ScaleTransform.ScaleX));
-        var y = PopFrames();
-        Storyboard.SetTarget(y, NodeScale);
-        Storyboard.SetTargetProperty(y, nameof(Microsoft.UI.Xaml.Media.ScaleTransform.ScaleY));
-        new Storyboard { Children = { x, y } }.Begin();
+        var visual = SetupVisualTransition.GetVisual(NodeHost);
+        visual.CenterPoint = new Vector3((float)NodeHost.Width / 2, (float)NodeHost.Height / 2, 0);
+        SetupVisualTransition.Play(PopPlayer, PopDuration, motion =>
+        {
+            using var rise = CompositionEasingFunction.CreatePowerEasingFunction(
+                visual.Compositor, CompositionEasingFunctionMode.Out, 3);
+            using var settle = CompositionEasingFunction.CreatePowerEasingFunction(
+                visual.Compositor, CompositionEasingFunctionMode.InOut, 3);
+            foreach (var axis in new[] { "Scale.X", "Scale.Y" })
+                motion.Animate(visual, axis, (0, .8f, null), (.5f, 16f / 12 * 1.08f, rise), (1, 1, settle));
+        });
     }
 
-    private static DoubleAnimationUsingKeyFrames PopFrames() => new()
+    private void StopPop()
     {
-        KeyFrames =
-        {
-            new DiscreteDoubleKeyFrame { KeyTime = TimeSpan.Zero, Value = 0.8 },
-            new EasingDoubleKeyFrame
-            {
-                KeyTime = PopDuration / 2, Value = 16d / 12 * 1.08,
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
-            },
-            new EasingDoubleKeyFrame
-            {
-                KeyTime = PopDuration, Value = 1,
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut },
-            },
-        },
-    };
+        SetupVisualTransition.Stop(PopPlayer);
+        SetupVisualTransition.GetVisual(NodeHost).Scale = Vector3.One;
+    }
 
     internal void SetAutomationName(string name) => AutomationProperties.SetName(this, name);
 }

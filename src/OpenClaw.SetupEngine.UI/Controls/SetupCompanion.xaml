@@ -21,6 +21,10 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="64" />
         </Grid.RowDefinitions>
+        <AnimatedVisualPlayer x:Name="BubblePlayer" AutoPlay="False" Width="1" Height="1"
+                              IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
+        <AnimatedVisualPlayer x:Name="HopPlayer" AutoPlay="False" Width="1" Height="1"
+                              IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
 
         <Grid x:Name="HeroBlock" Grid.Row="1" Width="336" Height="259"
               HorizontalAlignment="Center" Margin="0,0,24,0">
@@ -33,9 +37,6 @@
                      Fill="{ThemeResource SetupMascotShadowBrush}" />
             <Grid x:Name="MascotHost" Width="230" Height="230" Margin="0,29,0,0"
                   HorizontalAlignment="Center" VerticalAlignment="Top">
-                <Grid.RenderTransform>
-                    <TranslateTransform x:Name="MascotBounce" />
-                </Grid.RenderTransform>
                 <local:OnboardingMascot x:Name="MascotControl" Width="230" Height="230" Mood="Idle" />
                 <Grid x:Name="RestartBadge" Width="54" Height="54" Margin="0,0,30,18" Visibility="Collapsed"
                       HorizontalAlignment="Right" VerticalAlignment="Bottom" AutomationProperties.AccessibilityView="Raw">

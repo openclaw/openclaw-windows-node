@@ -21,6 +21,7 @@
                       Condition="'$(OpenClawSignedCleanupHostPath)' != ''"
                       LogicalName="OpenClaw.SetupEngine.GatewayCleanupHost.exe" />
     <InternalsVisibleTo Include="OpenClaw.SetupEngine.Tests" />
+    <InternalsVisibleTo Include="OpenClaw.Tray.UITests" />
     <InternalsVisibleTo Include="OpenClaw.SetupEngine.UI" />
     <ProjectReference Include="..\OpenClaw.Connection\OpenClaw.Connection.csproj" />
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />

@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Shapes;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI.Controls;
+using Microsoft.UI.Composition;
 using OpenClaw.TestSupport;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
@@ -22,7 +23,146 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
-    public async Task EveryMascotMood_RendersNativeVectorPixelsWithoutAnimation(ElementTheme theme)
+    public async Task SetupCompanion_PlayerTransitionsSettleLatestTextAndForwardStep(ElementTheme theme)
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var companion = new SetupCompanion { Width = 472, Height = 700, RequestedTheme = theme };
+            companion.Mascot.IsAnimationEnabled = false;
+            OnboardingStage[] route = [OnboardingStage.Capabilities, OnboardingStage.Install, OnboardingStage.AiSetup, OnboardingStage.Ready];
+            companion.Present("Choose your tools.", OnboardingMascotMood.Curious);
+            companion.UpdateSteps(route, OnboardingStage.Capabilities);
+            ui.Container.Children.Add(companion);
+            try
+            {
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => companion.IsLoaded && TestSupport.FindDescendants<AnimatedVisualPlayer>(companion).All(p => p.IsLoaded),
+                    "setup companion players mounted");
+                var players = TestSupport.FindDescendants<AnimatedVisualPlayer>(companion)
+                    .Where(p => p != Player(companion.Mascot)).ToArray();
+                var loaded = new HashSet<AnimatedVisualPlayer>();
+                foreach (var player in players)
+                    player.RegisterPropertyChangedCallback(AnimatedVisualPlayer.IsAnimatedVisualLoadedProperty, (_, _) =>
+                    {
+                        if (player.IsAnimatedVisualLoaded) loaded.Add(player);
+                    });
+                var advances = 0;
+                companion.Steps.Advanced += (_, _) => advances++;
+                companion.SetLine("Superseded text.");
+                companion.SetLine("Setting up your tools.");
+                companion.UpdateSteps(route, OnboardingStage.Install);
+                var animations = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+                output.WriteLine($"Setup Windows animations enabled: {animations}");
+                if (animations)
+                {
+                    Assert.Contains(players, p => p.Source is SetupVisualTransition && p.IsPlaying);
+                    Assert.All(players, p => Assert.Null(p.Diagnostics));
+                }
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => players.All(p => p.Source is null), "setup transition completion");
+                Assert.Equal("Setting up your tools.", ((TextBlock)companion.FindName("BubbleText")).Text);
+                Assert.Equal(animations ? 1 : 0, advances);
+                var rows = TestSupport.FindDescendants<SetupStepRow>(companion).ToArray();
+                if (animations)
+                {
+                    Assert.Contains((AnimatedVisualPlayer)companion.FindName("BubblePlayer"), loaded);
+                    Assert.Contains((AnimatedVisualPlayer)companion.FindName("HopPlayer"), loaded);
+                    Assert.Contains((AnimatedVisualPlayer)companion.Steps.FindName("AdvancePlayer"), loaded);
+                    Assert.Contains((AnimatedVisualPlayer)rows[1].FindName("PopPlayer"), loaded);
+                }
+                Assert.Equal(OnboardingDesignStepState.Done, rows[0].State);
+                Assert.Equal(OnboardingDesignStepState.Current, rows[1].State);
+                Assert.Contains(rows[1].LabelText, Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(rows[1]));
+                Assert.Equal(1, SetupVisualTransition.GetVisual((TextBlock)companion.FindName("BubbleText")).Opacity);
+                var host = SetupVisualTransition.GetVisual((Grid)companion.FindName("MascotHost"));
+                Assert.Equal(CompositionGetValueStatus.Succeeded, host.Properties.TryGetVector3("Translation", out var translation));
+                Assert.Equal(System.Numerics.Vector3.Zero, translation);
+                foreach (var row in rows)
+                    Assert.Equal(System.Numerics.Vector3.One, SetupVisualTransition.GetVisual((Grid)row.FindName("NodeHost")).Scale);
+                foreach (var pour in TestSupport.FindDescendants<Rectangle>(companion.Steps).Where(p => p.Name.StartsWith("Pour", StringComparison.Ordinal)))
+                    Assert.Equal(0, pour.Opacity);
+            }
+            finally { ui.Container.Children.Clear(); }
+        });
+    }
+
+    [Fact]
+    public async Task SetupCompanion_BackNavigationAndRemountCannotCompleteObsoleteTransitions()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var companion = new SetupCompanion { Width = 472, Height = 700 };
+            companion.Mascot.IsAnimationEnabled = false;
+            OnboardingStage[] route = [OnboardingStage.Capabilities, OnboardingStage.Install, OnboardingStage.AiSetup, OnboardingStage.Ready];
+            companion.Present("Original line.", OnboardingMascotMood.Idle);
+            companion.UpdateSteps(route, OnboardingStage.Capabilities);
+            ui.Container.Children.Add(companion);
+            try
+            {
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => companion.IsLoaded && companion.Steps.IsLoaded, "setup lifecycle mount");
+                var advances = 0;
+                companion.Steps.Advanced += (_, _) => advances++;
+                companion.UpdateSteps(route, OnboardingStage.Install);
+                companion.UpdateSteps(route, OnboardingStage.Capabilities);
+                companion.SetLine("Latest line survives remount.");
+                ui.Container.Children.Remove(companion);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => !companion.IsLoaded && TestSupport.FindDescendants<AnimatedVisualPlayer>(companion).All(p => p.Source is null),
+                    "setup companion and descendant player unload");
+                Assert.All(TestSupport.FindDescendants<AnimatedVisualPlayer>(companion), p => Assert.Null(p.Source));
+                ui.Container.Children.Add(companion);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => companion.IsLoaded && companion.Steps.IsLoaded, "setup companion remount");
+                Assert.Equal(0, advances);
+                Assert.Equal("Latest line survives remount.", ((TextBlock)companion.FindName("BubbleText")).Text);
+                var rows = TestSupport.FindDescendants<SetupStepRow>(companion).ToArray();
+                Assert.Equal(OnboardingDesignStepState.Current, rows[0].State);
+                Assert.Equal(OnboardingDesignStepState.Upcoming, rows[1].State);
+                Assert.All(TestSupport.FindDescendants<AnimatedVisualPlayer>(companion)
+                    .Where(p => p != Player(companion.Mascot)), p => Assert.Null(p.Source));
+            }
+            finally { ui.Container.Children.Clear(); }
+        });
+    }
+
+    [Fact]
+    public async Task SetupStepRow_InstantStateCancelsPopAndReleasesMeasuredDetailHeight()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var row = new SetupStepRow { Width = 240, LabelText = "Choose tools", DetailText = "A wrapping detail line for this setup stage." };
+            ui.Container.Children.Add(row);
+            try
+            {
+                await TestSupport.WaitForRenderedConditionAsync(() => row.IsLoaded, "setup step row mount");
+                row.Apply(OnboardingDesignStepState.Current, animate: true, highContrast: false);
+                row.Apply(OnboardingDesignStepState.Done, animate: false, highContrast: true);
+                var detail = (Grid)row.FindName("DetailHost");
+                Assert.Equal(0, detail.MaxHeight);
+                Assert.Equal(0, detail.Opacity);
+                Assert.Null(((AnimatedVisualPlayer)row.FindName("PopPlayer")).Source);
+                Assert.Equal(System.Numerics.Vector3.One, SetupVisualTransition.GetVisual((Grid)row.FindName("NodeHost")).Scale);
+                Assert.Equal(1, ((TextBlock)row.FindName("Label")).Opacity);
+                row.SetHovered(true, animate: false, highContrast: true);
+                Assert.True(double.IsPositiveInfinity(detail.MaxHeight));
+                Assert.Equal(1, detail.Opacity);
+                row.DetailText = "A different detail that must remain free to reflow at the new width.";
+                row.Width = 150;
+                ui.Container.UpdateLayout();
+                Assert.True(double.IsPositiveInfinity(detail.MaxHeight));
+            }
+            finally { ui.Container.Children.Clear(); }
+        });
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task EveryMascotMood_LoadsNativeAnimationSourceWithoutPlayback(ElementTheme theme)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -69,25 +209,13 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
 
             foreach (var mascot in mascots)
             {
-                Assert.True(TestSupport.FindDescendants<Shape>(mascot).Count() >= 10,
-                    $"{mascot.Mood} should use independently drawn vector parts.");
-                var bitmap = new RenderTargetBitmap();
-                await bitmap.RenderAsync(mascot);
-                var scale = mascot.XamlRoot.RasterizationScale;
-                Assert.Equal(NativeProofLayout.PhysicalPixels(mascot.ActualWidth, scale), bitmap.PixelWidth);
-                Assert.Equal(NativeProofLayout.PhysicalPixels(mascot.ActualHeight, scale), bitmap.PixelHeight);
-                var pixels = (await bitmap.GetPixelsAsync()).ToArray();
-                var coloredPixels = 0;
-                for (var offset = 0; offset < pixels.Length; offset += 4)
-                {
-                    if (pixels[offset + 3] > 0 &&
-                        pixels[offset + 2] > pixels[offset + 1] + 20 &&
-                        pixels[offset + 2] > pixels[offset] + 20)
-                        coloredPixels++;
-                }
-                Assert.True(coloredPixels > 100, $"{mascot.Mood} rendered no visible coral body.");
+                var player = Player(mascot);
+                Assert.True(player.IsAnimatedVisualLoaded, $"{mascot.Mood} could not create its native visual.");
+                Assert.False(player.IsPlaying);
+                var visual = Assert.IsAssignableFrom<IAnimatedVisual>(Field(player.Source, "_visual"));
+                Assert.Equal(new System.Numerics.Vector2(168), visual.Size);
             }
-            await SaveProofAsync(gallery, $"onboarding-mascot-{theme.ToString().ToLowerInvariant()}", output);
+            // RenderTargetBitmap excludes Composition child visuals. Native captures below own pixel proof.
             ui.Container.Children.Clear();
         });
     }
@@ -95,7 +223,7 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
-    public async Task MountedMascot_SeededFramesRenderInteractionAndAccessoryChannels(ElementTheme theme)
+    public async Task MountedMascot_AllNativeClipsCanSeekAndAccessoriesRemainIndependent(ElementTheme theme)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -108,52 +236,33 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
             OnboardingNativeProof.AssertHeroLayout(mascot, output);
             Assert.Equal(180, mascot.Width);
 
-            // Drive the production animator/drawing with deterministic elapsed time, without
-            // overriding Windows' preference or waiting for a wall-clock gesture schedule.
-            var animator = Field(mascot, "_animator")!;
-            var drawing = Field(mascot, "_drawing")!;
-            var advance = animator.GetType().GetMethod("Advance")!;
-            var render = drawing.GetType().GetMethod("Render")!;
-            var tap = animator.GetType().GetMethod("HandleTap")!;
-            async Task<byte[]> Frame(double seconds)
+            var player = Player(mascot);
+            var source = Assert.IsType<OnboardingMascotVisual>(player.Source);
+            foreach (var mood in Enum.GetValues<OnboardingMascotMood>())
+            foreach (var clip in Enum.GetValues<OnboardingMascotClip>())
             {
-                var pose = advance.Invoke(animator, [TimeSpan.FromSeconds(seconds), true]);
-                render.Invoke(drawing, [pose]);
+                source.Configure(mood, clip, still: false, phase: 0);
+                player.SetProgress(OnboardingMascotMotion.Duration(clip) / OnboardingMascotMotion.TimelineSeconds / 2);
+                await Assert.IsAssignableFrom<IAnimatedVisual>(Field(source, "_visual")).RootVisual.Compositor.RequestCommitAsync();
                 await ui.YieldToRenderAsync();
-                var bitmap = new RenderTargetBitmap();
-                await bitmap.RenderAsync(mascot);
-                return (await bitmap.GetPixelsAsync()).ToArray();
+                Assert.True(player.IsAnimatedVisualLoaded);
+                Assert.False(player.IsPlaying);
+                Assert.Null(player.Diagnostics);
             }
-
-            var idle = await Frame(0);
-            tap.Invoke(animator, null);
-            tap.Invoke(animator, null);
-            tap.Invoke(animator, null);
-            await Frame(0.1);
-            await Frame(0.1);
-            var hearts = await Frame(0.1);
-            AssertDifferentPixels(idle, hearts);
-            tap.Invoke(animator, null);
-            tap.Invoke(animator, null);
-            tap.Invoke(animator, null);
-            await Frame(0.1);
-            await Frame(0.1);
-            var dizzy = await Frame(0.1);
-            AssertDifferentPixels(hearts, dizzy);
-            animator.GetType().GetMethod("SetAccessory")!.Invoke(animator, [OnboardingMascotAccessory.GradCap]);
-            for (var i = 0; i < 6; i++)
-                await Frame(0.1);
-            var gradCap = await Frame(0);
-            AssertDifferentPixels(dizzy, gradCap);
+            source.Configure(OnboardingMascotMood.Idle, OnboardingMascotClip.Idle, still: true, phase: 0);
+            mascot.Accessory = OnboardingMascotAccessory.GradCap;
+            Assert.Equal(2, Input(source, "Accessory"));
+            Assert.Equal(0, Input(source, "HardHat"));
             mascot.Mood = OnboardingMascotMood.Sleepy;
-            var sleepy = await Frame(0.1);
-            AssertDifferentPixels(idle, sleepy);
+            Assert.Equal(2, Input(source, "Accessory"));
+            mascot.Accessory = OnboardingMascotAccessory.None;
+            Assert.Equal(1, Input(source, "Accessory"));
             ui.Container.Children.Clear();
         });
     }
 
     [Fact]
-    public async Task MountedMascot_PauseVisibilityAndUnloadStopTimerAndReleaseGlow()
+    public async Task MountedMascot_PauseVisibilityAndUnloadStopPlaybackAndReleaseVisuals()
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -165,27 +274,27 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
             await TestSupport.WaitForRenderedConditionAsync(() => mascot.IsLoaded, "lifecycle mascot Loaded");
             ui.Container.UpdateLayout();
             await ui.YieldToRenderAsync();
-            var timer = Assert.IsType<DispatcherTimer>(Field(mascot, "_timer"));
-            Assert.False(timer.IsEnabled);
+            var player = Player(mascot);
+            Assert.False(player.IsPlaying);
             Assert.NotNull(Field(mascot, "_heroGlow"));
-            var animator = Field(mascot, "_animator")!;
-            var elapsed = animator.GetType().GetProperty("ElapsedSeconds")!;
-            var before = elapsed.GetValue(animator);
+            var playback = Field(mascot, "_playback")!;
+            var elapsed = playback.GetType().GetProperty("Elapsed")!;
+            var before = elapsed.GetValue(playback);
             mascot.SetPointerGaze(1, -1);
             await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(200));
-            Assert.Equal(before, elapsed.GetValue(animator));
+            Assert.Equal(before, elapsed.GetValue(playback));
             mascot.IsAnimationEnabled = true;
             if (!new Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
-                Assert.False(timer.IsEnabled);
+                Assert.False(player.IsPlaying);
             host.Visibility = Visibility.Collapsed;
-            Assert.False(timer.IsEnabled);
+            Assert.False(player.IsPlaying);
             host.Visibility = Visibility.Visible;
             ui.Container.Children.Clear();
             await TestSupport.WaitForRenderedConditionAsync(() => !mascot.IsLoaded, "lifecycle mascot Unloaded");
             await ui.YieldToRenderAsync();
-            Assert.Null(Field(mascot, "_timer"));
+            Assert.Null(player.Source);
             Assert.Null(Field(mascot, "_heroGlow"));
-            Assert.False(timer.IsEnabled);
+            Assert.False(player.IsPlaying);
         });
     }
 
@@ -204,8 +313,9 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
             await TestSupport.WaitForRenderedConditionAsync(() => mascot.IsLoaded, "high contrast mascot Loaded");
             ui.Container.UpdateLayout();
             await ui.YieldToRenderAsync();
-            var drawing = Field(mascot, "_drawing")!;
-            drawing.GetType().GetMethod("SetPalette")!.Invoke(drawing, [false, true]);
+            var source = Assert.IsType<OnboardingMascotVisual>(Player(mascot).Source);
+            var original = Field(source, "_visual")!;
+            source.SetPalette(isLight: false, isHighContrast: true);
             var glow = Field(mascot, "_heroGlow")!;
             glow.GetType().GetMethod("SetPalette")!.Invoke(glow, [false, true]);
             var visual = Field(glow, "_visual")!;
@@ -217,8 +327,12 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
                 settings.UIElementColor(Windows.UI.ViewManagement.UIElementType.Window),
                 settings.UIElementColor(Windows.UI.ViewManagement.UIElementType.Highlight),
             };
-            foreach (var name in new[] { "_blushFill", "_heartFill", "_capBlue", "_bandBlue", "_capOutline", "_gradFill", "_gradOutline", "_sweatFill" })
-                Assert.Contains(Assert.IsType<SolidColorBrush>(Field(drawing, name)).Color, colors);
+            Assert.Same(original, Field(source, "_visual"));
+            var brushes = Assert.IsType<Dictionary<string, CompositionColorBrush>>(Field(original, "_brushes"));
+            foreach (var color in brushes.Values.Select(brush => brush.Color))
+                Assert.Contains(color, colors);
+            Assert.Equal(colors[0], Assert.IsType<CompositionColorGradientStop>(Field(original, "_coralTop")).Color);
+            Assert.Equal(colors[0], Assert.IsType<CompositionColorGradientStop>(Field(original, "_coralBottom")).Color);
             ui.Container.Children.Clear();
         });
     }
@@ -226,18 +340,18 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
     private static object? Field(object instance, string name) => instance.GetType().GetField(name,
         System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(instance);
 
-    private static void AssertDifferentPixels(byte[] first, byte[] second)
+    private static AnimatedVisualPlayer Player(OnboardingMascot mascot) =>
+        Assert.Single(TestSupport.FindDescendants<AnimatedVisualPlayer>(mascot));
+
+    private static float Input(OnboardingMascotVisual source, string name)
     {
-        Assert.Equal(first.Length, second.Length);
-        var changed = 0;
-        for (var offset = 0; offset < first.Length; offset += 4)
-            if (!first.AsSpan(offset, 4).SequenceEqual(second.AsSpan(offset, 4)))
-                changed++;
-        Assert.True(changed > 20, $"Expected rendered pose changes, found {changed} changed pixels.");
+        var properties = Assert.IsType<CompositionPropertySet>(Field(Field(source, "_visual")!, "_inputs"));
+        Assert.Equal(CompositionGetValueStatus.Succeeded, properties.TryGetScalar(name, out var value));
+        return value;
     }
 
     [Fact]
-    public async Task MountedMascots_AllEffectsKeepDistinctStableGeometryAndRenderNonblank()
+    public async Task MountedMascots_OwnIndependentNativeVisualsAcrossSeeksAndRemount()
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -254,43 +368,33 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
                 ui.Container.Children.Add(gallery);
                 ui.Container.UpdateLayout();
                 await ui.YieldToRenderAsync();
-                var paths = mascots.SelectMany(TestSupport.FindDescendants<Microsoft.UI.Xaml.Shapes.Path>).ToArray();
-                Assert.True(paths.Length >= 20);
-                var original = paths.Select(path => Assert.IsAssignableFrom<Geometry>(path.Data)).ToArray();
-                Assert.Equal(original.Length, original.Distinct(ReferenceEqualityComparer.Instance).Count());
-                var drawings = mascots.Select(mascot => Field(mascot, "_drawing")!).ToArray();
-                var render = drawings[0].GetType().GetMethod("Render")!;
-                var poseType = render.GetParameters()[0].ParameterType;
-                var effectProperty = poseType.GetProperty("Effect")!;
-                var effects = Enum.GetValues(effectProperty.PropertyType);
-                Assert.Contains("Hearts", effects.Cast<object>().Select(effect => effect.ToString()));
-                Assert.Contains("Sparks", effects.Cast<object>().Select(effect => effect.ToString()));
-                // Two complete passes exercise None after every active effect, not just construction.
+                var players = mascots.Select(Player).ToArray();
+                var visuals = players.Select(player => Field(player.Source, "_visual")).ToArray();
+                Assert.NotSame(visuals[0], visuals[1]);
                 for (var pass = 0; pass < 2; pass++)
-                    foreach (var effect in effects)
+                    foreach (var clip in Enum.GetValues<OnboardingMascotClip>())
                     {
-                        foreach (var drawing in drawings)
+                        foreach (var player in players)
                         {
-                            var pose = poseType.GetMethod("Static")!.Invoke(null, [OnboardingMascotMood.Idle])!;
-                            effectProperty.SetValue(pose, effect);
-                            poseType.GetProperty("EffectPhase")!.SetValue(pose, 0.25 + pass * 0.25);
-                            render.Invoke(drawing, [pose]);
+                            Assert.IsType<OnboardingMascotVisual>(player.Source).Configure(
+                                OnboardingMascotMood.Idle, clip, still: false, phase: 0);
+                            player.SetProgress(OnboardingMascotMotion.Duration(clip) / OnboardingMascotMotion.TimelineSeconds / 2);
+                            Assert.True(player.IsAnimatedVisualLoaded);
                         }
                         await ui.YieldToRenderAsync();
-                        for (var index = 0; index < paths.Length; index++)
-                            Assert.Same(original[index], paths[index].Data);
-                        Assert.Equal(paths.Length, paths.Select(path => path.Data).Distinct(ReferenceEqualityComparer.Instance).Count());
-                        foreach (var mascot in mascots)
-                        {
-                            var bitmap = new RenderTargetBitmap();
-                            await bitmap.RenderAsync(mascot, 182, 182);
-                            var pixels = (await bitmap.GetPixelsAsync()).ToArray();
-                            Assert.True(Enumerable.Range(0, pixels.Length / 4).Count(index =>
-                                pixels[index * 4 + 3] > 0 && pixels[index * 4 + 2] > pixels[index * 4 + 1] + 20 &&
-                                pixels[index * 4 + 2] > pixels[index * 4] + 20) > 100,
-                                $"{effect}, pass {pass}: mounted drawing lost its coral body.");
-                        }
+                        for (var index = 0; index < players.Length; index++)
+                            Assert.Same(visuals[index], Field(players[index].Source, "_visual"));
                     }
+                gallery.Children.Remove(mascots[0]);
+                await ui.YieldToRenderAsync();
+                Assert.Null(players[0].Source);
+                Assert.True(players[1].IsAnimatedVisualLoaded);
+                gallery.Children.Add(mascots[0]);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => mascots[0].IsLoaded && players[0].IsAnimatedVisualLoaded,
+                    "remounted mascot native visual");
+                Assert.True(players[0].IsAnimatedVisualLoaded);
+                Assert.NotSame(visuals[0], Field(players[0].Source, "_visual"));
             }
             finally { ui.Container.Children.Clear(); }
         });
@@ -300,18 +404,71 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
     [Trait("Category", "NativeOnboardingProof")]
-    public async Task NativeMascot_LiveTimerPointerTapsAndAccessoriesChangeComposedPixels(ElementTheme theme)
+    public async Task NativeMascot_StaticMoodsAndEffectClipsPaintComposedPixels(ElementTheme theme)
+    {
+        await WithNativeMascotWindowAsync(theme, animation: false, async (window, mascot) =>
+        {
+            foreach (var mood in Enum.GetValues<OnboardingMascotMood>())
+            {
+                mascot.Mood = mood;
+                using var frame = await OnboardingNativeProof.CaptureAsync(window,
+                    $"onboarding-composition-still-{theme}-{mood}", output,
+                    ["Static halo reference", "Owned window proof"]);
+                var region = OnboardingNativeProof.ClientPixels(window, mascot, frame);
+                Assert.True(CountChannelPixels(frame, region, color => color.R > color.G + 20 && color.R > color.B + 20) > 100,
+                    $"{mood} lost its composed coral body.");
+                if (mood is OnboardingMascotMood.Happy or OnboardingMascotMood.Sad)
+                {
+                    var mouth = System.Drawing.Rectangle.FromLTRB(
+                        region.Left + region.Width * 44 / 100, region.Top + region.Height * 42 / 100,
+                        region.Left + region.Width * 56 / 100, region.Top + region.Height * 50 / 100);
+                    Assert.True(CountChannelPixels(frame, mouth, color => color.R < 60 && color.G < 60 && color.B < 60) >= 10,
+                        $"{mood} must paint its mouth above the body, not behind it.");
+                }
+                if (mood == OnboardingMascotMood.Idle)
+                    Assert.True(CountChannelPixels(frame, region, color => color.G > 150 && color.B > 120 && color.R < 100) >= 4,
+                        "Eye highlights must paint above their dark eye shapes.");
+                Assert.False(Player(mascot).IsPlaying);
+            }
+            mascot.Mood = OnboardingMascotMood.Idle;
+            using var idle = await OnboardingNativeProof.CaptureAsync(window,
+                $"onboarding-composition-effects-{theme}-idle", output, ["Static halo reference", "Owned window proof"]);
+            var mascotRegion = OnboardingNativeProof.ClientPixels(window, mascot, idle);
+            foreach (var (name, clip) in new[]
+            {
+                ("hearts", OnboardingMascotClip.HeartBurst),
+                ("dizzy", OnboardingMascotClip.Dizzy),
+                ("sparkles", OnboardingMascotClip.Celebrate),
+                ("sparks", OnboardingMascotClip.Working),
+            })
+            {
+                Assert.IsType<OnboardingMascotVisual>(Player(mascot).Source).Configure(
+                    name == "sparks" ? OnboardingMascotMood.Working : OnboardingMascotMood.Idle, clip, still: false, phase: 0);
+                Player(mascot).SetProgress(OnboardingMascotMotion.Duration(clip) / OnboardingMascotMotion.TimelineSeconds *
+                    (name == "sparks" ? .8 : .5));
+                using var effect = await OnboardingNativeProof.CaptureAsync(window,
+                    $"onboarding-composition-effects-{theme}-{name}", output, ["Static halo reference", "Owned window proof"]);
+                OnboardingNativeProof.AssertChanged(idle, effect, mascotRegion);
+                if (name == "hearts")
+                    Assert.True(CountChannelPixels(effect, mascotRegion, IsHeartPixel) >= 10);
+            }
+            OnboardingNativeProof.AssertSourceUnchanged();
+        });
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    [Trait("Category", "NativeOnboardingProof")]
+    public async Task NativeMascot_CompositionPlaybackPointerTapsAndAccessoriesChangeComposedPixels(ElementTheme theme)
     {
         await WithNativeMascotWindowAsync(theme, animation: true, async (window, mascot) =>
         {
             Assert.True(new Windows.UI.ViewManagement.UISettings().AnimationsEnabled,
                 "Live motion proof requires Windows animations enabled. The test will not override the system preference.");
-            var timer = Assert.IsType<DispatcherTimer>(Field(mascot, "_timer"));
-            Assert.True(timer.IsEnabled, "The production Loaded path must start its normal timer.");
-            var animator = Field(mascot, "_animator")!;
-            var drawing = Field(mascot, "_drawing")!;
-            var elapsed = animator.GetType().GetProperty("ElapsedSeconds")!;
-            double Time() => Assert.IsType<double>(elapsed.GetValue(animator));
+            var player = Player(mascot);
+            Assert.True(player.IsPlaying, "The production Loaded path must start native playback.");
+            var playback = Field(mascot, "_playback")!;
             var started = Stopwatch.StartNew();
             var moved = 0;
             var tapped = 0;
@@ -322,7 +479,7 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
             async Task<OnboardingNativeProof.Frame> Sample(string step)
             {
                 Assert.True(started.Elapsed < TimeSpan.FromSeconds(15), "Live sample timeline exceeded its 15-second budget.");
-                Assert.True(timer.IsEnabled);
+                Assert.True(player.IsPlaying);
                 var snapshot = MascotChannels(mascot);
                 var frame = await OnboardingNativeProof.CaptureAsync(window,
                     $"onboarding-live-{theme}-{frames.Count:D2}-{step}", output,
@@ -332,25 +489,21 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
             }
             try
             {
-                var initialTime = Time();
                 var initial = await Sample("idle");
                 var region = OnboardingNativeProof.ClientPixels(window, mascot, initial);
-                var initialFloat = Assert.IsType<TranslateTransform>(Field(drawing, "_float")).Y;
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(350));
-                Assert.NotEqual(initialFloat, Assert.IsType<TranslateTransform>(Field(drawing, "_float")).Y);
                 var breathing = await Sample("live-idle");
                 OnboardingNativeProof.AssertChanged(initial, breathing, region);
                 OnboardingNativeProof.MovePointer(window, mascot, 32, 50);
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
                 Assert.True(moved > 0, "Real SendInput must reach the production PointerMoved handler.");
-                var gaze = EyeGaze(drawing);
+                var gaze = Gaze(mascot);
                 Assert.True(gaze.X < -0.1 && gaze.Y < -0.1);
                 var left = await Sample("pointer-left");
-                Assert.True(Time() > initialTime, "ElapsedSeconds must advance through the production DispatcherTimer.");
                 OnboardingNativeProof.AssertChanged(initial, left, region);
                 OnboardingNativeProof.MovePointer(window, mascot, 150, 50);
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
-                Assert.True(gaze.X > 0.1 && gaze.Y < -0.1);
+                Assert.True(Gaze(mascot).X > 0.1 && Gaze(mascot).Y < -0.1);
                 var right = await Sample("pointer-right");
                 var eyes = System.Drawing.Rectangle.FromLTRB(region.Left + region.Width * 25 / 100,
                     region.Top + region.Height * 25 / 100, region.Left + region.Width * 75 / 100,
@@ -366,11 +519,9 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
                     OnboardingNativeProof.TapPointer(window, mascot, x, 95);
                     await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(180));
                     Assert.Equal(index + 1, tapped);
-                    Assert.Equal(index + 1, Assert.IsType<int>(Field(animator, "_tapCount")));
+                    Assert.Equal(index + 1, Assert.IsType<Queue<double>>(Field(playback, "_taps")).Count);
                 }
-                Assert.Equal("HeartBurst", animator.GetType().GetProperty("ActiveGesture",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(animator)!.ToString());
-                Assert.Contains(Assert.IsType<Microsoft.UI.Xaml.Shapes.Path[]>(Field(drawing, "_hearts")), path => path.Opacity > 0.05);
+                Assert.Equal("HeartBurst", playback.GetType().GetProperty("Clip")!.GetValue(playback)!.ToString());
                 var hearts = await Sample("real-tap-hearts");
                 OnboardingNativeProof.AssertChanged(right, hearts, region);
                 Assert.True(CountChannelPixels(hearts, region, IsHeartPixel) >= 10,
@@ -380,7 +531,6 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
                 Assert.True(CountChannelPixels(hearts, capRegion, IsGraduationCapPixel) < 10);
                 mascot.Accessory = OnboardingMascotAccessory.GradCap;
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(650));
-                Assert.InRange(Assert.IsType<Canvas>(Field(drawing, "_gradCap")).Opacity, 0.99, 1);
                 var grad = await Sample("grad-cap");
                 OnboardingNativeProof.AssertChanged(hearts, grad, capRegion);
                 Assert.True(CountChannelPixels(grad, capRegion, IsGraduationCapPixel) >= 25,
@@ -388,15 +538,12 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
                 Assert.True(CountChannelPixels(grad, capRegion, IsNightcapPixel) < 10);
                 mascot.Accessory = OnboardingMascotAccessory.Nightcap;
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(650));
-                Assert.InRange(Assert.IsType<Canvas>(Field(drawing, "_nightcap")).Opacity, 0.99, 1);
-                Assert.Equal(0, Assert.IsType<Canvas>(Field(drawing, "_gradCap")).Opacity);
                 var night = await Sample("night-cap");
                 OnboardingNativeProof.AssertChanged(grad, night, capRegion);
                 Assert.True(CountChannelPixels(night, capRegion, IsNightcapPixel) >= 25,
                     "The nightcap must paint its blue crown, not merely change the moving head below.");
                 Assert.True(CountChannelPixels(night, capRegion, IsGraduationCapPixel) < 10,
                     "Replacing the graduation cap must remove its composed slate pixels.");
-                Assert.True(Time() - initialTime > 1);
                 Assert.True(started.Elapsed < TimeSpan.FromSeconds(15), "Live sample timeline exceeded its 15-second budget.");
                 OnboardingNativeProof.AssertSourceUnchanged();
             }
@@ -417,8 +564,7 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
         {
             Assert.False(new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast,
                 "Coral halo proof requires a non-high-contrast desktop. High contrast must suppress glow.");
-            var timer = Assert.IsType<DispatcherTimer>(Field(mascot, "_timer"));
-            Assert.False(timer.IsEnabled);
+            Assert.False(Player(mascot).IsPlaying);
             var glow = Field(mascot, "_heroGlow")!;
             var visual = Assert.IsAssignableFrom<Microsoft.UI.Composition.Visual>(Field(glow, "_visual"));
             Assert.True(visual.IsVisible);
@@ -499,17 +645,14 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
                 output.WriteLine("Input cleanup: no cursor restore to a pre-test external HWND; only the test-owned window is closed.");
                 window.Close();
                 await ui.YieldToRenderAsync();
-                Assert.Null(Field(mascot, "_timer"));
+                Assert.Null(Player(mascot).Source);
                 Assert.Null(Field(mascot, "_heroGlow"));
             }
         });
     }
 
-    private static TranslateTransform EyeGaze(object drawing)
-    {
-        var eye = Field(drawing, "_leftEye")!;
-        return Assert.IsType<TranslateTransform>(eye.GetType().GetProperty("Gaze")!.GetValue(eye));
-    }
+    private static System.Numerics.Vector2 Gaze(OnboardingMascot mascot) =>
+        Assert.IsType<System.Numerics.Vector2>(Field(Player(mascot).Source, "_gaze"));
 
     private static int CountChannelPixels(OnboardingNativeProof.Frame frame, System.Drawing.Rectangle region,
         Func<System.Drawing.Color, bool> matches)
@@ -532,20 +675,17 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
 
     private static object MascotChannels(OnboardingMascot mascot)
     {
-        var animator = Field(mascot, "_animator")!;
-        var drawing = Field(mascot, "_drawing")!;
-        var gaze = EyeGaze(drawing);
+        var playback = Field(mascot, "_playback")!;
+        var source = Assert.IsType<OnboardingMascotVisual>(Player(mascot).Source);
+        var gaze = Field(source, "_gaze") as System.Numerics.Vector2?;
         return new
         {
-            elapsedSeconds = animator.GetType().GetProperty("ElapsedSeconds")!.GetValue(animator),
-            gesture = animator.GetType().GetProperty("ActiveGesture", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(animator)?.ToString(),
-            tapCount = Field(animator, "_tapCount"),
-            bodyFloat = Assert.IsType<TranslateTransform>(Field(drawing, "_float")).Y,
-            gazeX = gaze.X, gazeY = gaze.Y,
-            hearts = Assert.IsType<Microsoft.UI.Xaml.Shapes.Path[]>(Field(drawing, "_hearts")).Select(path => path.Opacity).ToArray(),
-            nightcap = Assert.IsType<Canvas>(Field(drawing, "_nightcap")).Opacity,
-            gradCap = Assert.IsType<Canvas>(Field(drawing, "_gradCap")).Opacity,
-            timerEnabled = Assert.IsType<DispatcherTimer>(Field(mascot, "_timer")).IsEnabled,
+            elapsedSeconds = playback.GetType().GetProperty("Elapsed")!.GetValue(playback),
+            clip = playback.GetType().GetProperty("Clip")!.GetValue(playback)?.ToString(),
+            tapCount = Assert.IsType<Queue<double>>(Field(playback, "_taps")).Count,
+            gazeX = gaze?.X, gazeY = gaze?.Y,
+            headwear = Input(source, "Accessory"),
+            playing = Player(mascot).IsPlaying,
         };
     }
 

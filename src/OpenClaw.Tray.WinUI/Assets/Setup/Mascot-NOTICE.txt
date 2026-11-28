@@ -1,8 +1,7 @@
 OpenClaw onboarding mascot and provider artwork provenance
 
-The Windows OnboardingMascot control, drawing, pose, animator, and particles
-adapt the canonical Mac vector geometry, palettes, expressions, and animation
-curves from openclaw/openclaw commit:
+The Windows OnboardingMascot control and Composition source adapt the canonical
+Mac vector geometry, palettes, expressions, and gestures from openclaw/openclaw commit:
 0fd603a6fece58d60c010e565df9e26c6601db8b
 https://github.com/openclaw/openclaw/tree/0fd603a6fece58d60c010e565df9e26c6601db8b
 
@@ -24,18 +23,19 @@ E9D6B34133EA07C1D494C915DE0CCCBA4461C4481AF64C5FD024E298CA6F5ADC
   Supplies the canonical 130-point hero artwork size.
 
 Windows adaptation:
-- Native retained WinUI vector shapes, without SwiftUI or raster substitutes.
-- All nine moods, sixteen gesture clips, seeded randomized micro-behaviors,
-  pointer gaze, tap reactions, idle sleep, nightcap and graduation cap are ported.
-- xorshift64* matches the upstream generator; floating-point range conversion
-  and bounded tap selection use C# sampling, not Swift's standard-library mapping.
-- A native CompositionVisualSurface captures the actual retained artwork for
+- Handwritten Composition geometry and expressions implement AnimatedVisualPlayer's
+  source contract without SwiftUI, raster substitutes, JSON or generated code.
+- Nine moods and sixteen gesture clips, plus dizzy recovery, pointer gaze, tap
+  reactions, idle sleep, nightcap and graduation cap retain the character's
+  behavior. Composition evaluates motion formulas; clip-boundary scheduling
+  replaces the old xorshift frame scheduler, not a byte-identical Swift port.
+- A native CompositionVisualSurface captures the actual player artwork for
   the static theme-specific silhouette DropShadow. No duplicate art or raster.
 - Windows animation preferences select static mood poses; hidden and unloaded
-  controls stop their timer. A 24-unit gutter contains the animated 120-unit art.
-  The Windows 182-DIP layout frame scales 168 canvas units to 130 DIPs of art.
+  controls stop playback. A 24-unit gutter contains the animated 120-unit art.
+  The Windows 180-DIP layout frame scales 168 canvas units to about 129 DIPs of art.
   This reserves overflow rather than using Mac's 145-point frame with overflow.
-- Sleep-effect letters use the Windows native text font rather than Mac typography.
+- Sleep-effect letters are native vector paths.
 - Artwork preserves the upstream light/dark brand palette. High contrast uses
   the user's system colors. No SF Symbols were imported.
 
