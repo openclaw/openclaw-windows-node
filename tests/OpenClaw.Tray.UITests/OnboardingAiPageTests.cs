@@ -438,6 +438,53 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         });
     }
 
+    [Fact]
+    public async Task SettledErrorWithoutRejection_ShowsGatewayCauseWithoutCompletionOrAutomaticRetry()
+    {
+        const string cause = "Synthetic provider CLI was not found on PATH.";
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            transport.UnclassifiedActivationError = cause;
+            await InvokeChoiceAsync(page);
+            await WaitAsync(() => Assert.IsType<InfoBar>(GetDialog(page).FindName("DialogError")).IsOpen);
+            var message = Assert.IsType<InfoBar>(GetDialog(page).FindName("DialogError")).Message;
+            Assert.Contains(cause, message);
+            // The cause is a diagnostic only: the attempt is still presented as unconfirmed.
+            Assert.Contains("not confirmed", message);
+            Assert.Equal(0, completed());
+            Assert.Equal(1, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
+            Assert.DoesNotContain("openclaw.setup.verify", transport.MethodCalls);
+        });
+    }
+
+    [Fact]
+    public async Task SettledErrorWithoutRejection_CheckAgainReleasesTheAttemptForAnExplicitRetry()
+    {
+        const string cause = "Synthetic provider CLI was not found on PATH.";
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            transport.UnclassifiedActivationError = cause;
+            await InvokeChoiceAsync(page);
+            var dialog = GetDialog(page);
+            await WaitAsync(() => Assert.IsType<InfoBar>(dialog.FindName("DialogError")).IsOpen &&
+                dialog.IsSecondaryButtonEnabled);
+            Invoke(DialogButton(dialog, "SecondaryButton"));
+            // Setup is still incomplete, so the settled attempt is released back to the choices.
+            await WaitAsync(() => Find<InfoBar>(page, "ErrorBar").IsOpen && Find<Button>(page, "RefreshButton").IsEnabled);
+            Assert.Contains(cause, Find<InfoBar>(page, "ErrorBar").Message);
+            Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ChoicePanel").Visibility);
+            Assert.DoesNotContain("wizard.cancel", transport.MethodCalls);
+            Assert.DoesNotContain("wizard.next", transport.MethodCalls);
+            Assert.Equal(0, completed());
+            transport.UnclassifiedActivationError = null;
+            // The retried activation succeeds, so the Gateway then reports its model as configured.
+            transport.SetupIncomplete = false;
+            await InvokeChoiceAsync(page);
+            await WaitAsync(() => completed() == 1);
+            Assert.Equal(2, transport.MethodCalls.Count(method => method == "openclaw.setup.activate.start"));
+        }, configure: transport => transport.SetupIncomplete = true);
+    }
+
     [Theory]
     [InlineData(ElementTheme.Light, 720)]
     [InlineData(ElementTheme.Dark, 720)]
@@ -2580,6 +2627,10 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         public JsonElement LastActivation { get; private set; }
         public bool FailActivation { get; set; }
         public bool RejectActivation { get; set; }
+        /// <summary>Settles activation as a Gateway error that carries no rejection receipt.</summary>
+        public string? UnclassifiedActivationError { get; set; }
+        /// <summary>Reports a Gateway that has no configured model yet, as on a first run.</summary>
+        public bool SetupIncomplete { get; set; }
         public bool HoldActivation { get; set; }
         public bool HoldAnswer { get; set; }
         public string? AnswerError { get; set; }
@@ -2695,8 +2746,8 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     prepareOptions = new[] { new { id = "local-setup", label = "Local service", hint = "Set up and use" } }
                         .Take(IncludeDensityChoices ? 1 : 0).ToArray(),
                     workspace = "/synthetic-workspace",
-                    configuredModel = "openai/test-model",
-                    setupComplete = true,
+                    configuredModel = SetupIncomplete ? null : "openai/test-model",
+                    setupComplete = !SetupIncomplete,
                     nativeSessionCatalogPreferenceRequired = RequireCatalogConsent,
                 }), cancellationToken);
             }
@@ -2713,6 +2764,12 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                         sessionId = LastActivation.GetProperty("sessionId").GetString(),
                         done = true, status = "error",
                         activationRejection = new { disposition = "rejected-before-promotion", status = "auth" },
+                    }));
+                if (UnclassifiedActivationError is { } activationError)
+                    return Task.FromResult(JsonSerializer.SerializeToElement(new
+                    {
+                        sessionId = LastActivation.GetProperty("sessionId").GetString(),
+                        done = true, status = "error", error = activationError,
                     }));
                 return Task.FromResult(JsonSerializer.SerializeToElement(new
                 {

@@ -217,6 +217,156 @@ public sealed class GatewayAiSetupClientTests
     }
 
     [Fact]
+    public async Task SettledErrorWithoutRejection_ReportsGatewayCauseWithoutReleasingTheAttempt()
+    {
+        const string cause = "Claude CLI was not found on PATH. Install Claude Code, then re-run this setup.";
+        var (client, transport) = await CreateAsync();
+        client.SelectAuthOption("demo-login");
+        await client.StartSelectedAsync();
+        transport.Replies.Enqueue(Json($$"""{"done":true,"status":"error","error":"{{cause}}"}"""));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => client.RefreshAsync());
+        Assert.Equal(cause, error.Message);
+        Assert.Equal(GatewayAiSetupPhase.Uncertain, client.Phase);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DetectAsync());
+        Assert.Single(transport.Calls, c => c.Method.EndsWith(".start"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SettledErrorWithUnchangedSavedSetup_IsReleasedWithoutReachingThePurgedSession(bool refresh)
+    {
+        var (client, transport) = await SettleWithUnclassifiedErrorAsync();
+        transport.Replies.Enqueue(Json(Detection));
+        if (refresh) await client.RefreshAsync();
+        else await client.CancelAsync();
+        Assert.Equal(GatewayAiSetupPhase.Rejected, client.Phase);
+        Assert.Null(client.SessionId);
+        Assert.Equal(SettledCause, client.Wizard!.Error);
+        Assert.Equal("openclaw.setup.detect", transport.Calls.Last().Method);
+        Assert.DoesNotContain(transport.Calls, c => c.Method == "wizard.cancel");
+        Assert.Single(transport.Calls, c => c.Method == "wizard.next");
+        client.SelectAuthOption("demo-login");
+        await client.StartSelectedAsync();
+        Assert.Equal(2, transport.Calls.Count(c => c.Method.EndsWith(".start")));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SettledErrorWithChangedSavedSetup_StaysUncertainAndIsNeverReplayed(bool refresh)
+    {
+        var (client, transport) = await SettleWithUnclassifiedErrorAsync();
+        transport.Replies.Enqueue(Json(Persisted));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => refresh ? client.RefreshAsync() : client.CancelAsync());
+        Assert.Equal(GatewayAiSetupPhase.Uncertain, client.Phase);
+        Assert.NotNull(client.SessionId);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DetectAsync());
+        Assert.Single(transport.Calls, c => c.Method.EndsWith(".start"));
+    }
+
+    [Fact]
+    public async Task SettledErrorWhileARouteWasAlreadyConfigured_StaysUncertainEvenWhenTheModelNameIsUnchanged()
+    {
+        const string configured = """
+            {"candidates":[],"manualProviders":[],"authOptions":[{"id":"demo-login","label":"Sign in"}],
+             "workspace":"/home/test","setupComplete":true,"configuredModel":"demo/model"}
+            """;
+        var transport = new FakeTransport();
+        transport.Replies.Enqueue(Json(configured));
+        var client = new GatewayAiSetupClient(transport);
+        await client.DetectAsync();
+        client.SelectAuthOption("demo-login");
+        await client.StartSelectedAsync();
+        transport.Replies.Enqueue(Json($$"""{"done":true,"status":"error","error":"{{SettledCause}}"}"""));
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.RefreshAsync());
+        transport.Replies.Enqueue(Json(configured));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.RefreshAsync());
+        Assert.Equal(GatewayAiSetupPhase.Uncertain, client.Phase);
+        Assert.NotNull(client.SessionId);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DetectAsync());
+    }
+
+    [Fact]
+    public async Task SettledErrorWhoseSavedSetupCannotBeRead_StaysUncertain()
+    {
+        var (client, transport) = await SettleWithUnclassifiedErrorAsync();
+        transport.Failure = new TimeoutException();
+        await Assert.ThrowsAsync<TimeoutException>(() => client.RefreshAsync());
+        Assert.Equal(GatewayAiSetupPhase.Uncertain, client.Phase);
+        Assert.NotNull(client.SessionId);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.DetectAsync());
+    }
+
+    [Theory]
+    [InlineData("""{"done":true,"status":"done"}""")]
+    [InlineData("""{"done":true,"status":"error","activationRejection":{"disposition":"unknown","status":"auth"}}""")]
+    public async Task OtherAmbiguousTerminals_AreNotReleasedByAnUnchangedSavedSetup(string payload)
+    {
+        var (client, transport) = await StartAsync();
+        transport.Replies.Enqueue(Json(payload));
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.RefreshAsync());
+        await client.RefreshAsync();
+        Assert.Equal("wizard.next", transport.Calls.Last().Method);
+        Assert.NotEqual(GatewayAiSetupPhase.Rejected, client.Phase);
+        Assert.NotNull(client.SessionId);
+    }
+
+    [Theory]
+    [InlineData("""{"done":true,"status":"error"}""")]
+    [InlineData("""{"done":true,"status":"error","error":"   "}""")]
+    public async Task SettledErrorWithoutACause_StillReportsADiagnostic(string payload)
+    {
+        var (client, transport) = await StartAsync();
+        transport.Replies.Enqueue(Json(payload));
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => client.RefreshAsync());
+        Assert.False(string.IsNullOrWhiteSpace(error.Message));
+        Assert.Equal(GatewayAiSetupPhase.Uncertain, client.Phase);
+    }
+
+    private const string CliRuntimeDetection = """
+        {"candidates":[{"kind":"claude-cli","label":"Claude Code","detail":"installed","modelRef":"claude-cli/claude-opus-5-5"},
+                       {"kind":"demo","label":"Demo AI","detail":"Saved login","modelRef":"demo/model"}],
+         "manualProviders":[],"workspace":"/home/test","setupComplete":false}
+        """;
+
+    [Fact]
+    public async Task CliRuntimeCandidate_AcceptsItsCanonicalProviderReceiptAndVerifiesThatRoute()
+    {
+        var transport = new FakeTransport();
+        transport.Replies.Enqueue(Json(CliRuntimeDetection));
+        var client = new GatewayAiSetupClient(transport);
+        await client.DetectAsync();
+        client.SelectCandidate("claude-cli", "claude-cli/claude-opus-5-5");
+        await client.StartSelectedAsync();
+        transport.Replies.Enqueue(Json("""{"done":true,"status":"done","modelActivation":{"modelRef":"anthropic/claude-opus-5-5"}}"""));
+        await client.RefreshAsync();
+        Assert.Equal(GatewayAiSetupPhase.VerificationRequired, client.Phase);
+        transport.Replies.Enqueue(Json("""{"candidates":[],"manualProviders":[],"workspace":"/home/test","setupComplete":true,"configuredModel":"anthropic/claude-opus-5-5"}"""));
+        transport.Replies.Enqueue(Json("""{"ok":true,"modelRef":"anthropic/claude-opus-5-5","latencyMs":12}"""));
+        Assert.True((await client.VerifyAsync()).Ok);
+        Assert.Equal("anthropic/claude-opus-5-5", client.VerifiedModelRef);
+    }
+
+    [Theory]
+    [InlineData("claude-cli", "claude-cli/claude-opus-5-5", "anthropic/claude-haiku-5-5")]
+    [InlineData("claude-cli", "claude-cli/claude-opus-5-5", "other/claude-opus-5-5")]
+    [InlineData("demo", "demo/model", "other/model")]
+    [InlineData("demo", "demo/model", "anthropic/model")]
+    public async Task ReceiptForAnotherModelOrAnUnrelatedProvider_StaysUncertain(string kind, string selected, string activated)
+    {
+        var transport = new FakeTransport();
+        transport.Replies.Enqueue(Json(CliRuntimeDetection));
+        var client = new GatewayAiSetupClient(transport);
+        await client.DetectAsync();
+        client.SelectCandidate(kind, selected);
+        await client.StartSelectedAsync();
+        transport.Replies.Enqueue(Json($$$"""{"done":true,"status":"done","modelActivation":{"modelRef":"{{{activated}}}"}}"""));
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.RefreshAsync());
+        Assert.Equal(GatewayAiSetupPhase.Uncertain, client.Phase);
+    }
+
+    [Fact]
     public async Task PreparationIsNotActivation()
     {
         var (client, transport) = await CreateAsync();
@@ -783,6 +933,19 @@ public sealed class GatewayAiSetupClientTests
         var (client, transport) = await CreateAsync();
         client.SelectCandidate("provider-auto:demo", "demo/model");
         await client.StartSelectedAsync();
+        return (client, transport);
+    }
+
+    private const string SettledCause = "Claude CLI was not found on PATH.";
+
+    /// <summary>A provider sign-in whose wizard settled with a Gateway error and no rejection receipt.</summary>
+    private static async Task<(GatewayAiSetupClient, FakeTransport)> SettleWithUnclassifiedErrorAsync()
+    {
+        var (client, transport) = await CreateAsync();
+        client.SelectAuthOption("demo-login");
+        await client.StartSelectedAsync();
+        transport.Replies.Enqueue(Json($$"""{"done":true,"status":"error","error":"{{SettledCause}}"}"""));
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.RefreshAsync());
         return (client, transport);
     }
 
