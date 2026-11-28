@@ -35,6 +35,12 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     public const string AvatarRequestMethod = "http:users.avatar";
 
     /// <summary>
+    /// Request label for the Companion's reads of the Control UI's stylesheets (built-in theme resolution). The
+    /// fixture answers them 404, as a Gateway with its Control UI disabled does, so the bundled theme table applies.
+    /// </summary>
+    public const string ControlUiRequestMethod = "http:control-ui";
+
+    /// <summary>
     /// Flat colour of the authenticated scenario profile's photo. It is neither a Windows accent nor the
     /// initials fallback, so finding it in a rendered window proves the photo was decoded.
     /// </summary>
@@ -752,6 +758,22 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         return BroadcastAsync("cron", new { action = "updated" });
     }
 
+    /// <summary>Announces a plugin inventory change, which invalidates plugin themes, through the real event.</summary>
+    public Task PublishPluginsChangedAsync()
+    {
+        if (_scenario.Themes is null)
+            throw new InvalidOperationException("The scenario has no theme catalog.");
+        return BroadcastAsync("plugins.changed", new { reason = "fixture" });
+    }
+
+    /// <summary>Announces a profile preference change, which invalidates imported themes, through the real event.</summary>
+    public Task PublishUserPrefsChangedAsync()
+    {
+        if (_scenario.Themes is null)
+            throw new InvalidOperationException("The scenario has no theme catalog.");
+        return BroadcastAsync("users.prefs.changed", new { profileId = _scenario.AuthenticatedProfileId });
+    }
+
     public async Task PublishAgentEventAsync(
         string sessionKey,
         object data,
@@ -941,6 +963,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     return;
                 }
                 if (await TryServeAvatarAsync(stream, head, connection.Token))
+                    return;
+                if (await TryRefuseControlUiAsync(stream, head, connection.Token))
                     return;
                 socket = await UpgradeAsync(stream, head, connection.Token);
                 var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
@@ -1430,6 +1454,41 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
         await stream.WriteAsync(bytes, ct);
         await stream.FlushAsync(ct);
+    }
+
+    /// <summary>
+    /// Answers the Companion's Control UI reads (index.html as text/html, linked or theme stylesheets as text/css)
+    /// with 404, like a Gateway whose Control UI is disabled. Anything else, including a bare <c>GET /</c>, is left
+    /// for the upgrade check, which rejects and records it.
+    /// </summary>
+    private async Task<bool> TryRefuseControlUiAsync(NetworkStream stream, string[] head, CancellationToken ct)
+    {
+        if (RequestPath(head) is not { } target ||
+            head.Any(line => line.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase)))
+            return false;
+        var accept = head.FirstOrDefault(line => line.StartsWith("Accept:", StringComparison.OrdinalIgnoreCase))
+            ?.Split(':', 2)[1].Trim();
+        var path = target.Split('?', 2)[0];
+        var isControlUiRead = accept == "text/html" ? path == "/"
+            : accept == "text/css" && (path.StartsWith("/assets/", StringComparison.Ordinal) ||
+                path.StartsWith("/themes/", StringComparison.Ordinal)) && path.EndsWith(".css", StringComparison.Ordinal);
+        if (!isControlUiRead)
+            return false;
+        var index = Record(ControlUiRequestMethod, null);
+        var recorded = "not-served";
+        try
+        {
+            await WriteHttpAsync(stream, 404, "text/plain", "Not Found", null, ct);
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+        {
+            recorded = "disconnected";
+        }
+        finally
+        {
+            Complete(index, recorded);
+        }
+        return true;
     }
 
     /// <summary>

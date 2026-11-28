@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Themes;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
 using System;
@@ -127,6 +128,13 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 dashboardBinding.PendingOpenChanged -= Changed;
             };
         }), (object?)dashboardBinding ?? this);
+        var (_, setArtworkRevision) = UseState(ChatBackgroundArtwork.Revision, threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            void Changed() => setArtworkRevision(ChatBackgroundArtwork.Revision);
+            ChatBackgroundArtwork.Changed += Changed;
+            return () => ChatBackgroundArtwork.Changed -= Changed;
+        }), this);
         var (viewportWidth, setViewportWidth) = UseState(800d);
         var (viewportHeight, setViewportHeight) = UseState(620d);
         var (collapsedQuestionId, setCollapsedQuestionId) = UseState<string?>(null);
@@ -685,6 +693,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             [GridSize.Star()],
             [showWelcome ? GridSize.Auto : props.Compact ? (isEmptyConversation ? GridSize.Auto : GridSize.Star()) : GridSize.Star(),
                 GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
+            // Theme artwork behind everything else, as the dashboard draws it behind its new-session page and chats.
+            (props.Compact
+                    ? Empty()
+                    : ChatBackgroundArtwork.Render(showWelcome ? ThemeBackgroundSurface.NewSession : ThemeBackgroundSurface.Conversation))
+                .WithKey("chat-background-artwork").Grid(row: 0, rowSpan: 6),
             showWelcome || (props.Compact && isEmptyConversation)
                 ? Empty().Grid(row: 0)
                 : props.Compact

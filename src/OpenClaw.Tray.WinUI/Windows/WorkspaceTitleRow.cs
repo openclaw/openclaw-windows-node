@@ -32,7 +32,6 @@ internal sealed class WorkspaceTitleRow : IDisposable
     private readonly Action _invalidate;
     private FrameworkElement? _tabStrip;
     private FrameworkElement? _tabList;
-    private Rect? _tabBounds;
     private XamlRoot? _root;
 
     internal WorkspaceTitleRow(AppWindow window, TitleBar titleBar, FrameworkElement actions,
@@ -103,16 +102,47 @@ internal sealed class WorkspaceTitleRow : IDisposable
     private void Track(FrameworkElement? tabStrip)
     {
         if (ReferenceEquals(tabStrip, _tabStrip)) return;
-        if (_tabStrip is not null) _tabStrip.LayoutUpdated -= OnTabStripLayoutUpdated;
+        if (_tabStrip is not null) _tabStrip.LayoutUpdated -= FindTabListAfterLayout;
+        TrackTabList(null);
         _tabStrip = tabStrip;
-        _tabList = null;
-        if (tabStrip is not null) tabStrip.LayoutUpdated += OnTabStripLayoutUpdated;
+        if (tabStrip is null) return;
+        if (FindPart(tabStrip) is { } tabs) TrackTabList(tabs);
+        else tabStrip.LayoutUpdated += FindTabListAfterLayout;
+    }
+
+    private void FindTabListAfterLayout(object? sender, object args)
+    {
+        if (_tabStrip is not { IsLoaded: true } strip || FindPart(strip) is not { } tabs) return;
+        strip.LayoutUpdated -= FindTabListAfterLayout;
+        TrackTabList(tabs);
+        _invalidate();
+    }
+
+    private void TrackTabList(FrameworkElement? tabs)
+    {
+        if (_tabList is not null)
+        {
+            _tabList.SizeChanged -= OnTabListSizeChanged;
+            _tabList.EffectiveViewportChanged -= OnTabListViewportChanged;
+            _tabList.Unloaded -= OnTabListUnloaded;
+        }
+        _tabList = tabs;
+        if (tabs is null) return;
+        tabs.SizeChanged += OnTabListSizeChanged;
+        tabs.EffectiveViewportChanged += OnTabListViewportChanged;
+        tabs.Unloaded += OnTabListUnloaded;
+    }
+
+    private void OnTabListUnloaded(object sender, RoutedEventArgs args)
+    {
+        TrackTabList(null);
+        if (_tabStrip is not null) _tabStrip.LayoutUpdated += FindTabListAfterLayout;
+        _invalidate();
     }
 
     private void PlaceTabsPassthrough()
     {
-        _tabBounds = TabBounds();
-        if (_tabBounds is not { } bounds)
+        if (TabBounds() is not { } bounds)
         {
             _tabsPassthrough.Visibility = Visibility.Collapsed;
             return;
@@ -127,9 +157,7 @@ internal sealed class WorkspaceTitleRow : IDisposable
     /// <summary>Bounds of the tab items in pass-through canvas coordinates, once the template part is ready.</summary>
     private Rect? TabBounds()
     {
-        if (_tabStrip is not { IsLoaded: true } strip) return null;
-        if (_tabList is not { IsLoaded: true }) _tabList = FindPart(strip);
-        if (_tabList is not { ActualWidth: > 0, ActualHeight: > 0 } tabs) return null;
+        if (_tabList is not { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } tabs) return null;
         try
         {
             var origin = tabs.TransformToVisual(_passthroughCanvas).TransformPoint(default);
@@ -138,18 +166,9 @@ internal sealed class WorkspaceTitleRow : IDisposable
         catch (ArgumentException) { return null; }
     }
 
-    // Tabs move without resizing when the panel or sidebar slides, and the template part can load a
-    // pass after the strip; re-place whenever the bounds appear, change or disappear.
-    private void OnTabStripLayoutUpdated(object? sender, object e)
-    {
-        var bounds = TabBounds();
-        if (bounds is null && _tabBounds is null) return;
-        if (bounds is { } next && _tabBounds is { } previous &&
-            Math.Abs(next.X - previous.X) < 0.5 && Math.Abs(next.Y - previous.Y) < 0.5 &&
-            Math.Abs(next.Width - previous.Width) < 0.5 && Math.Abs(next.Height - previous.Height) < 0.5)
-            return;
-        _invalidate();
-    }
+    // The panel or sidebar can slide the tabs without resizing them.
+    private void OnTabListViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args) => _invalidate();
+    private void OnTabListSizeChanged(object sender, SizeChangedEventArgs args) => _invalidate();
 
     private static FrameworkElement? FindPart(DependencyObject parent)
     {

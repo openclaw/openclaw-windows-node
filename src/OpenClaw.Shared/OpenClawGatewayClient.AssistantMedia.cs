@@ -12,7 +12,26 @@ public partial class OpenClawGatewayClient
     internal const int MaximumAssistantFilePreviewBytes = 1024 * 1024;
     private const int AssistantFilePreviewTimeoutMs = 20000;
     private const int MaximumAssistantMediaMetadataBytes = 64 * 1024;
+    private const int Base64CancellationCheckInterval = 4096;
     private const string ManagedMediaPathPrefix = "/api/chat/media/outgoing/";
+    private const string InlineDataUrlScheme = "data:";
+    private const string DefaultInlineImageMimeType = "image/png";
+    private const int MaximumInlineImageDataUrlHeaderChars = 256;
+    private const int MaximumInlineImageDataUrlChars =
+        MaximumInlineImageDataUrlHeaderChars + (MaximumAssistantImageBytes + 2) / 3 * 4;
+
+    // Raster formats the Gateway embeds inline; SVG is excluded because it is active content.
+    private static readonly HashSet<string> InlineImageMimeTypes = new(StringComparer.Ordinal)
+    {
+        "image/apng",
+        "image/avif",
+        "image/bmp",
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    };
+
     private readonly Guid _mediaClientId = Guid.NewGuid();
     private readonly HttpClient _assistantMediaHttpClient;
 
@@ -23,11 +42,33 @@ public partial class OpenClawGatewayClient
     {
         if (string.IsNullOrWhiteSpace(sessionKey)
             || media.Kind == ChatMediaContentKind.Unknown
-            || media.Kind == ChatMediaContentKind.File && media.Source != ChatMediaContentSource.Structured
-            || !TryCaptureMediaLease(out var lease))
+            || media.Kind == ChatMediaContentKind.File && media.Source != ChatMediaContentSource.Structured)
         {
             return AssistantMediaResolutionResult.Unavailable;
         }
+
+        // Inline images already arrived with the message; decode them locally without a connection.
+        var inlineDataUrl = media.InlineDataUrl;
+        if (media.Kind == ChatMediaContentKind.Image && !string.IsNullOrEmpty(inlineDataUrl))
+        {
+            using var inlineCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                CancellationToken);
+            try
+            {
+                return await Task.Run(
+                    () => ResolveInlineImage(inlineDataUrl, inlineCancellation.Token),
+                    inlineCancellation.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (
+                cancellationToken.IsCancellationRequested || CancellationToken.IsCancellationRequested)
+            {
+                return AssistantMediaResolutionResult.Unavailable;
+            }
+        }
+
+        if (!TryCaptureMediaLease(out var lease))
+            return AssistantMediaResolutionResult.Unavailable;
 
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
@@ -455,14 +496,33 @@ public partial class OpenClawGatewayClient
 
     internal static bool TryDecodeBoundedBase64(string? encoded, int maximumBytes, out byte[] bytes)
     {
+        if (string.IsNullOrEmpty(encoded))
+        {
+            bytes = Array.Empty<byte>();
+            return false;
+        }
+
+        return TryDecodeBoundedBase64(encoded.AsSpan(), maximumBytes, CancellationToken.None, out bytes);
+    }
+
+    private static bool TryDecodeBoundedBase64(
+        ReadOnlySpan<char> encoded,
+        int maximumBytes,
+        CancellationToken cancellationToken,
+        out byte[] bytes)
+    {
         bytes = Array.Empty<byte>();
-        if (string.IsNullOrEmpty(encoded) || maximumBytes <= 0)
+        if (encoded.IsEmpty || maximumBytes <= 0)
             return false;
 
         var maximumEncodedLength = ((maximumBytes + 2L) / 3L) * 4L;
         var compactLength = 0;
-        foreach (var character in encoded)
+        for (var index = 0; index < encoded.Length; index++)
         {
+            if (cancellationToken.CanBeCanceled && index % Base64CancellationCheckInterval == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+
+            var character = encoded[index];
             if (char.IsWhiteSpace(character))
                 continue;
             compactLength++;
@@ -477,22 +537,24 @@ public partial class OpenClawGatewayClient
         if (paddedLength > maximumEncodedLength)
             return false;
 
-        var normalized = string.Create(paddedLength, encoded, static (destination, source) =>
+        var normalized = GC.AllocateUninitializedArray<char>(paddedLength);
+        var normalizedLength = 0;
+        for (var index = 0; index < encoded.Length; index++)
         {
-            var index = 0;
-            foreach (var character in source)
+            if (cancellationToken.CanBeCanceled && index % Base64CancellationCheckInterval == 0)
+                cancellationToken.ThrowIfCancellationRequested();
+
+            var character = encoded[index];
+            if (char.IsWhiteSpace(character))
+                continue;
+            normalized[normalizedLength++] = character switch
             {
-                if (char.IsWhiteSpace(character))
-                    continue;
-                destination[index++] = character switch
-                {
-                    '-' => '+',
-                    '_' => '/',
-                    _ => character,
-                };
-            }
-            destination[index..].Fill('=');
-        });
+                '-' => '+',
+                '_' => '/',
+                _ => character,
+            };
+        }
+        normalized.AsSpan(normalizedLength).Fill('=');
 
         var padding = normalized[^1] == '='
             ? normalized.Length > 1 && normalized[^2] == '=' ? 2 : 1
@@ -501,8 +563,9 @@ public partial class OpenClawGatewayClient
         if (decodedLength > maximumBytes)
             return false;
 
+        cancellationToken.ThrowIfCancellationRequested();
         var decoded = GC.AllocateUninitializedArray<byte>(decodedLength);
-        if (!Convert.TryFromBase64Chars(normalized, decoded, out var bytesWritten)
+        if (!Convert.TryFromBase64Chars(normalized.AsSpan(), decoded, out var bytesWritten)
             || bytesWritten != decodedLength)
         {
             return false;
@@ -510,6 +573,63 @@ public partial class OpenClawGatewayClient
 
         bytes = decoded;
         return true;
+    }
+
+    /// <summary>
+    /// Validates the header of an inline <c>data:image/...;base64,</c> URL: an allowlisted
+    /// raster MIME type, the base64 flag, and the overall size bound. The payload itself is
+    /// validated when <see cref="ResolveInlineImage"/> decodes it.
+    /// </summary>
+    internal static bool TryParseInlineImageDataUrl(
+        string? dataUrl,
+        out string mimeType,
+        out int payloadStart)
+    {
+        mimeType = string.Empty;
+        payloadStart = 0;
+        if (string.IsNullOrEmpty(dataUrl)
+            || dataUrl.Length > MaximumInlineImageDataUrlChars
+            || !dataUrl.StartsWith(InlineDataUrlScheme, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var headerStart = InlineDataUrlScheme.Length;
+        var comma = dataUrl.IndexOf(
+            ',',
+            headerStart,
+            Math.Min(dataUrl.Length - headerStart, MaximumInlineImageDataUrlHeaderChars));
+        if (comma < 0 || comma == dataUrl.Length - 1)
+            return false;
+
+        var header = dataUrl[headerStart..comma].Split(';', StringSplitOptions.TrimEntries);
+        var declaredMimeType = header[0].ToLowerInvariant();
+        if (!InlineImageMimeTypes.Contains(declaredMimeType)
+            || !header.Skip(1).Any(static option => option.Equals("base64", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        mimeType = declaredMimeType;
+        payloadStart = comma + 1;
+        return true;
+    }
+
+    private static AssistantMediaResolutionResult ResolveInlineImage(
+        string dataUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParseInlineImageDataUrl(dataUrl, out var mimeType, out var payloadStart))
+            return AssistantMediaResolutionResult.Unavailable;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return TryDecodeBoundedBase64(
+            dataUrl.AsSpan(payloadStart),
+            MaximumAssistantImageBytes,
+            cancellationToken,
+            out var bytes)
+                ? new AssistantMediaResolutionResult(AssistantMediaResolutionStatus.Ready, bytes, mimeType)
+                : AssistantMediaResolutionResult.Unavailable;
     }
 
     private static int MaximumBytes(ChatMediaContentKind kind) => kind switch

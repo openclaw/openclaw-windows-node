@@ -4578,6 +4578,48 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>Choose light, dark, or use your Windows setting.</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>Gateway theme</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use the colors and fonts of an OpenClaw dashboard theme. Windows High Contrast always takes priority.</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Windows default</value>
+  </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Mica backdrop</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>With the Windows default theme, let the desktop show through window backgrounds. Gateway themes always use solid colors.</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Header.Text" xml:space="preserve">
+    <value>Background artwork</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
+    <value>Theme artwork behind new chats and conversations. While following the Gateway theme, your dashboard choice is used.</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>Dashboard default</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_Faded.Content" xml:space="preserve">
+    <value>Faded</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_FullBleed.Content" xml:space="preserve">
+    <value>Full bleed</value>
+  </data>
+  <data name="SettingsPage_BackgroundVisibility.Header" xml:space="preserve">
+    <value>Artwork strength</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>Follow Gateway theme</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use the theme selected in the OpenClaw dashboard and update when it changes there.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>System</value>
   </data>
@@ -4638,11 +4680,23 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>Open onboarding</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Automatic cleanup unavailable</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Before uninstalling OpenClaw, remove the WSL Gateway in Settings &gt; Local Gateway. Remove a Store Gateway in Windows Settings &gt; Apps only if no other Companion variant uses it.</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Store Gateway cleanup unavailable</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Before uninstalling OpenClaw, remove the Store Gateway in Windows Settings &gt; Apps only if no other Companion variant uses it.</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Gateway cleanup</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Uninstalling OpenClaw in Windows Settings automatically removes managed Gateways. Use Remove Local Gateway below to remove a Gateway while keeping the app.</value>
+    <value>When policy allows it, uninstalling OpenClaw in Windows Settings automatically removes managed Gateways. If PowerShell policy blocks cleanup, remove the WSL Gateway here or remove the Store Gateway in Windows Settings &gt; Apps only if no other installed Companion variant uses it before uninstalling; otherwise a Gateway may remain.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.</value>
@@ -6315,6 +6369,8 @@ Open Channels in the web dashboard.</value>
   <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>Managed by OpenClaw</value></data>
   <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>Not installed</value></data>
   <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>Not installed</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Title" xml:space="preserve"><value>Local AI needs a Gateway from this app</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Message" xml:space="preserve"><value>Local AI only works with a Gateway that this app installs on this PC. The active Gateway was not installed by this app, so Local AI setup can't use it. To use Local AI, install a local Gateway from Connection.</value></data>
   <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>Unknown</value></data>
   <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>Downloaded and verified</value></data>
   <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>Loaded on GPU</value></data>
@@ -6456,7 +6512,6 @@ Open Channels in the web dashboard.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copied</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Copy failed</value></data>
-  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Message text</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Effort</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>

@@ -549,10 +549,30 @@ public sealed class ChatToolActivityPresentationTests
     [InlineData("web_fetch", ChatToolActivityCategory.Fetch)]
     [InlineData("WebFetch", ChatToolActivityCategory.Fetch)]
     [InlineData("custom.calendar", ChatToolActivityCategory.Generic)]
+    [InlineData("vendor.read_file", ChatToolActivityCategory.Read)]
+    [InlineData("vendor_read_file", ChatToolActivityCategory.Read)]
+    [InlineData("vendorread_file", ChatToolActivityCategory.Generic)]
+    [InlineData("vendor.fetch", ChatToolActivityCategory.Fetch)]
+    [InlineData("vendorfetch", ChatToolActivityCategory.Generic)]
     public void Classify_CoversWebAndWindowsAliases(
         string name,
         ChatToolActivityCategory expected) =>
         Assert.Equal(expected, ChatToolActivityPresentation.Classify(name));
+
+    [Fact]
+    public void Classify_NormalizedNamesDoNotAllocatePerAlias()
+    {
+        const string name = "custom.calendar";
+        for (var index = 0; index < 256; index++)
+            ChatToolActivityPresentation.Classify(name);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < 128; index++)
+            ChatToolActivityPresentation.Classify(name);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0, allocated);
+    }
 
     [Fact]
     public void Classify_TextEditorUsesCommand()

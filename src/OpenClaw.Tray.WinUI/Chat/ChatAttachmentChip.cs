@@ -162,7 +162,7 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
                     Border(Empty())
                         .Size(ChatVisuals.AttachmentThumbnailSize, ChatVisuals.AttachmentThumbnailSize)
                         .Margin(0, inset, inset, 0)
-                        .CornerRadius(ChatVisuals.SurfaceRadius)
+                        .ThemedCorner(() => ChatVisuals.SurfaceRadius)
                         .BorderThickness(1)
                         .BorderBrush(Theme.Ref("ChatStrokeBrush"))
                         .Background(thumbnail)

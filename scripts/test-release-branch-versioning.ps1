@@ -30,7 +30,7 @@ function Invoke-FixtureGit {
 
 function Assert-FixtureVersion {
     param([string]$Repository, [string]$ExpectedVersion, [string]$ExpectedSha)
-    $json = & dotnet tool run dotnet-gitversion -- $Repository /output json /nonormalize /nocache
+    $json = & dotnet tool run dotnet-gitversion -- $Repository --output json --telemetry-opt-out --no-normalize --no-cache
     if ($LASTEXITCODE -ne 0) { throw 'GitVersion fixture execution failed. Run dotnet tool restore first.' }
     $version = $json | ConvertFrom-Json
     if ($version.SemVer -cne $ExpectedVersion) {
@@ -133,7 +133,7 @@ try {
         $env:GITHUB_REF = "refs/heads/$groupBranch"
         $env:GITHUB_SHA = $group
         try {
-            $json = & dotnet tool run dotnet-gitversion -- $queue /output json /nocache
+            $json = & dotnet tool run dotnet-gitversion -- $queue --output json --telemetry-opt-out --no-cache
             if ($LASTEXITCODE -ne 0) { throw 'GitVersion failed on a merge queue branch.' }
         } finally {
             foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $null) }
@@ -173,7 +173,10 @@ try {
         Copy-Item -LiteralPath (Join-Path $root 'GitVersion.yml') -Destination $source
         @"
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GitVersion_CommandLineArguments>--telemetry-opt-out</GitVersion_CommandLineArguments>
+  </PropertyGroup>
   <ItemGroup><PackageReference Include="GitVersion.MsBuild" Version="$packageVersion" PrivateAssets="all" /></ItemGroup>
 </Project>
 "@ | Set-Content (Join-Path $source 'VersionProbe.csproj')
@@ -191,8 +194,8 @@ try {
         $main = $candidate
         $reservation = 'msix-package/2026.11.3/305'
 
-        foreach ($attempt in @('initial', 'retry-negative', 'retry')) {
-            if ($attempt -eq 'retry-negative') {
+        foreach ($attempt in @('initial', 'retry-normalized', 'retry')) {
+            if ($attempt -eq 'retry-normalized') {
                 Invoke-FixtureGit $source tag -a $reservation $candidate -m 'MSIX reservation'
                 Invoke-FixtureGit $source commit --quiet --allow-empty -m 'Main moved beyond the release'
                 $main = (Invoke-FixtureGit $source rev-parse HEAD).Trim()
@@ -243,40 +246,55 @@ try {
                     } finally { Pop-Location }
                 }
                 $output = & dotnet build @arguments 2>&1
-                if ($attempt -eq 'retry-negative') {
-                    if ($LASTEXITCODE -eq 0 -or "$output" -notlike '*Found more than one remote tip*' -or
-                        "$output" -notlike "*refs/tags/$reservation^{}*" -or "$output" -notlike "*refs/tags/$tag*") {
-                        throw "Negative control did not reproduce the two-tag normalization failure: $output"
-                    }
-                    Write-Host "Reproduced $($case.Name): normalization rejects release and annotated reservation tips."
-                    continue
-                }
                 if ($LASTEXITCODE -ne 0) { throw "Release $attempt versioning failed: $output" }
                 if ($attempt -eq 'retry') {
                     # The metadata action must use the same no-normalization policy.
                     Assert-FixtureVersion $checkout $case.Version $candidate
-                    if ((Invoke-FixtureGit $checkout cat-file -t "refs/tags/$reservation").Trim() -cne 'tag' -or
-                        (Invoke-FixtureGit $checkout rev-parse "$reservation^{commit}").Trim() -cne $candidate) {
-                        throw 'Versioning changed the annotated reservation.'
-                    }
+                }
+                if ($attempt -ne 'initial' -and
+                    ((Invoke-FixtureGit $checkout cat-file -t "refs/tags/$reservation").Trim() -cne 'tag' -or
+                     (Invoke-FixtureGit $checkout rev-parse "$reservation^{commit}").Trim() -cne $candidate)) {
+                    throw 'Versioning changed the annotated reservation.'
                 }
                 $version = Get-Content (Join-Path $checkout 'obj\gitversion.json') -Raw | ConvertFrom-Json
                 $assembly = Join-Path $checkout 'bin\Debug\net10.0\VersionProbe.dll'
                 $productVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($assembly).ProductVersion.Split('+')[0]
+                $actualHead = (Invoke-FixtureGit $checkout rev-parse HEAD).Trim()
+                $actualMain = (Invoke-FixtureGit $checkout rev-parse refs/remotes/origin/main).Trim()
+                $details = [ordered]@{
+                    expectedVersion = $case.Version
+                    expectedSource = $candidate
+                    expectedMain = $main
+                    semVer = $version.SemVer
+                    sha = $version.Sha
+                    productVersion = $productVersion
+                    head = $actualHead
+                    originMain = $actualMain
+                } | ConvertTo-Json -Compress
+                if ($attempt -eq 'retry-normalized' -and $case.Name -eq 'alpha-retry') {
+                    # Normalization succeeds but loses the selected release version.
+                    if ([string]::IsNullOrWhiteSpace($version.SemVer) -or
+                        $version.Sha -cne $candidate -or $actualHead -cne $candidate -or
+                        $actualMain -cne $main -or $productVersion -cne $version.SemVer -or
+                        $version.SemVer -ceq $case.Version) {
+                        throw "Normalized retry did not reproduce version drift with unchanged source and refs: $details. Build: $output"
+                    }
+                    Write-Host "Reproduced $($case.Name): normalization selected $($version.SemVer), not $($case.Version), with unchanged source and refs."
+                    continue
+                }
                 if ($version.SemVer -cne $case.Version -or $version.Sha -cne $candidate -or
                     $productVersion -cne $case.Version -or
-                    (Invoke-FixtureGit $checkout rev-parse HEAD).Trim() -cne $candidate -or
-                    (Invoke-FixtureGit $checkout rev-parse refs/remotes/origin/main).Trim() -cne $main) {
-                    throw "Release $attempt selected the wrong version or source: $output"
+                    $actualHead -cne $candidate -or $actualMain -cne $main) {
+                    throw "Release $attempt selected the wrong version or source: $details. Build: $output"
                 }
             } finally {
                 foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $null) }
             }
         }
-        Write-Host "Passed $($case.Name): initial and retry MSBuild versions match $($case.Version) at $candidate."
+        Write-Host "Passed $($case.Name): supported MSBuild versions match $($case.Version) at $candidate."
     }
     Write-Host 'Passed real GitVersion regression: 4 release-branch fixtures (12 version/source checks) and 1 merge queue fixture (2 checks).'
-    Write-Host 'Passed 2 release-retry fixtures: 4 MSBuild version/source/assembly checks, 2 expected normalization failures, 2 metadata tool checks, 4 source/tag rejection checks.'
+    Write-Host 'Passed 2 release-retry fixtures: 5 supported MSBuild version/source/assembly checks, 1 normalized alpha wrong-version control with unchanged source and refs, 2 metadata tool checks, 4 source/tag rejection checks.'
 } finally {
     foreach ($name in $environmentNames) {
         [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])

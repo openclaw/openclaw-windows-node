@@ -114,6 +114,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     public IOperatorGatewayClient? GatewayClient => _connectionManager?.OperatorClient;
     public GatewayRegistry? Registry => _gatewayRegistry;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
+    private readonly Theming.AppThemeApplicator _themeApplicator = new();
+    private Theming.GatewayThemeCatalog? _themeCatalog;
+    private Theming.GatewayThemeFollower? _themeFollower;
+    private Theming.GatewayBuiltinThemeResolver? _builtinThemes;
+    private OpenClaw.Shared.Themes.ServedBuiltinThemeCache? _builtinThemeCache;
+    // Built-in palettes until the resolver exists: the last Gateway's cached ones over the table.
+    private OpenClaw.Shared.Themes.IBuiltinThemeSource? _startupBuiltinThemes;
+    private SettingsWriteOrigin? _themeFollowerOrigin;
+    private global::Windows.UI.ViewManagement.UISettings? _themeColorSettings;
+    private bool _themeResourcesChanged;
     private ProfileAutoFillCoordinator? _profileAutoFill;
     internal ProfileAutoFillCoordinator ProfileAutoFill => _profileAutoFill ??= new(
         () => ProfileCompletionContext.Capture(_connectionManager, _gatewayRegistry),
@@ -371,6 +381,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+        // Dev builds write the measure/arrange chain of an imminent layout cycle to the native debugger
+        // (Sysinternals DebugView captures it). It records only when a cycle is detected.
+        if (AppIdentity.IsDev)
+            DebugSettings.LayoutCycleTracingLevel = LayoutCycleTracingLevel.High;
     }
 
     private static bool HasArg(string[] args, string name) =>
@@ -418,7 +432,34 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
         _crashLogger.Log("UnhandledException", e.Exception);
+        // E_LAYOUTCYCLE: CsWinRT maps it to LayoutCycleException; match the HRESULT too in case it arrives unmapped.
+        if (e.Exception is LayoutCycleException || e.Exception?.HResult == unchecked((int)0x802B0014))
+            LogLayoutCycleContext();
         e.Handled = true; // Try to prevent crash
+    }
+
+    // A layout cycle carries no managed stack; record what was on screen so a report can be traced.
+    private void LogLayoutCycleContext()
+    {
+        try
+        {
+            var theme = _themeApplicator.Current?.Id ?? "Windows default";
+            var focused = _windowManager?.DialogXamlRoot is { } root
+                ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) : null;
+            var popups = _windowManager?.DialogXamlRoot is { } popupRoot
+                ? string.Join(", ", Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(popupRoot)
+                    .Select(popup => popup.Child?.GetType().Name ?? "empty"))
+                : "";
+            Logger.Error($"[Layout] Layout cycle context: theme {theme}, focused {DescribeElement(focused)}, open popups [{popups}]");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Layout] Layout cycle context unavailable: {ex.GetType().Name}");
+        }
+
+        static string DescribeElement(object? element) => element is FrameworkElement framework
+            ? $"{framework.GetType().Name}#{Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(framework)}"
+            : element?.GetType().Name ?? "none";
     }
 
     /// <summary>
@@ -520,6 +561,20 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
 
         var dispatcher = new WinUIDispatcher(_dispatcherQueue);
+        _themeCatalog = new Theming.GatewayThemeCatalog(dispatcher);
+        // Built-in palettes come from the connected Gateway's own stylesheets, then the bundled table.
+        _builtinThemes = new Theming.GatewayBuiltinThemeResolver(
+            dispatcher,
+            _themeCatalog,
+            new Theming.WebViewBuiltinThemeProbe(dispatcher),
+            _builtinThemeCache ?? CreateBuiltinThemeCache());
+        _themeFollower = new Theming.GatewayThemeFollower(
+            _themeCatalog,
+            () => _settings?.Appearance,
+            PersistFollowedAppearance,
+            ApplyThemePreferenceToOpenWindows,
+            _builtinThemes);
+        _builtinThemes.Changed += (_, _) => ApplyThemePreferenceToOpenWindows();
         var context = new AppServiceContext(
             dispatcher,
             this,
@@ -533,6 +588,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         var services = new ServiceCollection();
         services.AddOpenClawTrayCore(context);
+        services.AddSingleton<Theming.IGatewayThemeCatalog>(_themeCatalog);
+        services.AddSingleton<Theming.IGatewayBuiltinThemes>(_builtinThemes);
 
         // WinUI-bound registrations are added here (not in the pure core) so the core
         // stays testable in a pure net10 project.
@@ -591,7 +648,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     Severity = AppNotificationSeverity.Error,
                     DedupeKey = "desktop-companion-failed",
                 });
-            });
+            },
+            EffectiveThemePreference);
         _desktopCompanion.SetMainWindowVisibility(_windowManager?.HasVisibleMainWindow == true);
         _desktopCompanion.Start();
     }
@@ -730,7 +788,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 if (!await OpenClaw.SetupEngine.GatewayPackageCleanup.InitializeAsync(
                     new OpenClaw.SetupEngine.CommandRunner(cleanupLogger),
                     AppIdentity.ResolveRoamingDataDirectory(), AppIdentity.ResolveSetupLocalDataDirectory(),
-                    preserve: error => NativeRestartAdmission.PromptPreserveGateways(error, AppIdentity.DisplayName)))
+                    preserve: error => NativeRestartAdmission.PromptPreserveGateways(error, AppIdentity.DisplayName),
+                    warning: message => Logger.Warn(message)))
                 {
                     Exit();
                     return;
@@ -912,6 +971,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // in the onboarding wizard. OnLaunched delegates through a guarded
         // async boundary so onboarding failures are logged instead of escaping
         // before the tray ever initializes.
+        // Apply the saved Gateway theme before any window is themed, then follow system color and
+        // contrast changes so an opaque (Mica-off) canvas switches to High Contrast colors too.
+        // The last Gateway's cached palettes resolve it, so its session-long control geometry matches them.
+        _builtinThemeCache = CreateBuiltinThemeCache();
+        _startupBuiltinThemes = Theming.GatewayBuiltinThemeResolver.LastCached(_builtinThemeCache);
+        ApplyGatewayTheme();
+        _themeColorSettings = new global::Windows.UI.ViewManagement.UISettings();
+        _themeColorSettings.ColorValuesChanged += (_, _) => OnUiThread(ApplyThemePreferenceToOpenWindows);
+
         InitializeTrayIcon();
         ShowSurfaceImprovementsTipIfNeeded();
 
@@ -1247,8 +1315,101 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
     internal void ApplyThemePreferenceToOpenWindows()
     {
-        _windowManager?.ApplyThemeToOpenWindows();
-        _trayController?.ApplyTheme();
+        var themeChanged = ApplyGatewayTheme();
+        _themeResourcesChanged = themeChanged;
+        try
+        {
+            _windowManager?.ApplyThemeToOpenWindows();
+            _trayController?.ApplyTheme();
+        }
+        finally
+        {
+            _themeResourcesChanged = false;
+        }
+        // Chat restyles mounted Markdown so prose and code pick up the theme's fonts.
+        if (themeChanged)
+        {
+            Chat.ChatThemeChanges.Refresh();
+            _desktopCompanion?.RefreshTheme();
+        }
+    }
+
+    /// <summary>The window theme preference: a one-palette Gateway theme pins its mode over the App theme setting.</summary>
+    private string EffectiveThemePreference() => _themeApplicator.Current?.PinnedMode switch
+    {
+        OpenClaw.Shared.Themes.ThemeColorMode.Light => SettingsManager.AppThemeLight,
+        OpenClaw.Shared.Themes.ThemeColorMode.Dark => SettingsManager.AppThemeDark,
+        _ => _settings?.AppTheme ?? SettingsManager.AppThemeSystem,
+    };
+
+    private static OpenClaw.Shared.Themes.ServedBuiltinThemeCache CreateBuiltinThemeCache() =>
+        new(Path.Combine(AppIdentity.ResolveLocalDataDirectory(), "Themes", "gateway-builtin-themes.json"));
+
+    private bool ApplyGatewayTheme()
+    {
+        if (_settings is null)
+            return false;
+        var changed = true;
+        try
+        {
+            // Turning on "Follow Gateway theme" records the Gateway's current theme before it is resolved.
+            SyncFollowedGatewayTheme();
+            var theme = OpenClaw.Shared.Themes.AppearanceResolver.ResolveTheme(_settings.Appearance,
+                (OpenClaw.Shared.Themes.IBuiltinThemeSource?)_builtinThemes ?? _startupBuiltinThemes);
+            var mode = EffectiveColorMode();
+            // The first call runs at startup, before any window: controls keep that theme's corner radii all session.
+            _themeApplicator.DecideControlGeometry(theme, mode);
+            changed = _themeApplicator.Apply(theme, mode);
+        }
+        catch (Exception ex)
+        {
+            changed = false;
+            Logger.Error($"[Themes] Applying the theme failed: {ex}");
+        }
+        // Mica windows and dialogs follow the Mica setting (Windows default only), the theme and High Contrast.
+        Theming.BackdropPolicy.Configure(_settings.Appearance.UseMica, _themeApplicator.Current);
+        // Standalone dialogs resolve some brushes in code from the app's own (Windows) mode, so they stay in that mode
+        // unless a one-palette theme pins one: both modes then hold its only palette. They refresh after a theme change.
+        Theming.BackdropPolicy.ConfigureWindowTheme(
+            _themeApplicator.Current?.PinnedMode is null ? SettingsManager.AppThemeSystem : EffectiveThemePreference(), changed);
+        Chat.ChatBackgroundArtwork.Set(_themeApplicator.Current,
+            OpenClaw.Shared.Themes.AppearanceResolver.ActiveBackground(_settings.Appearance));
+        return changed;
+    }
+
+    /// <summary>The light/dark mode windows render in: the App theme setting, or Windows' app mode for System.</summary>
+    private OpenClaw.Shared.Themes.ThemeColorMode EffectiveColorMode() =>
+        SettingsManager.NormalizeAppTheme(_settings?.AppTheme) switch
+        {
+            SettingsManager.AppThemeLight => OpenClaw.Shared.Themes.ThemeColorMode.Light,
+            SettingsManager.AppThemeDark => OpenClaw.Shared.Themes.ThemeColorMode.Dark,
+            _ => ThemeHelper.IsDarkMode() ? OpenClaw.Shared.Themes.ThemeColorMode.Dark : OpenClaw.Shared.Themes.ThemeColorMode.Light,
+        };
+
+    // A failed save of the followed theme must not stop the theme from applying.
+    private void SyncFollowedGatewayTheme()
+    {
+        try
+        {
+            _themeFollower?.Sync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Themes] Recording the followed Gateway theme failed: {ex.GetType().Name} {ex.Message}");
+        }
+    }
+
+    private void PersistFollowedAppearance(OpenClaw.Shared.Themes.AppearanceSettings appearance)
+    {
+        if (SettingsStore is { } store)
+        {
+            store.Update(GetOrCreateSettingsWriteOrigin(ref _themeFollowerOrigin, store), edit => edit.Appearance = appearance);
+            return;
+        }
+        if (_settings is null)
+            return;
+        _settings.Appearance = appearance;
+        _settings.Save();
     }
 
     private void ApplyThemePreference(Window? window)
@@ -1256,7 +1417,15 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (_settings is null)
             return;
 
-        ThemeHelper.ApplyTheme(window, _settings.AppTheme);
+        try
+        {
+            ThemeHelper.ApplyTheme(window, EffectiveThemePreference(), _themeResourcesChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Themes] Window theme update failed: {ex.GetType().Name} 0x{ex.HResult:X8} {ex.Message}");
+        }
+        Theming.BackdropPolicy.Apply(window, themedByApp: true);
     }
 
     private void ShowCanvasWindow()
@@ -2411,6 +2580,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _gatewayService?.AttachClient(e.NewClient, e.OldClient);
         _automationsOverview?.SetConnection(GatewayClient);
         SynchronizeUsageProviderConnection();
+        _themeCatalog?.SetConnection(GatewayClient, _connectionManager?.CurrentSnapshot.GatewayId);
+        _builtinThemes?.SetConnection(GatewayClient, _connectionManager?.CurrentSnapshot.GatewayId);
         _inboxGatewaySource?.AttachClient(e.NewClient);
 
         // Configure new client
@@ -2475,6 +2646,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         {
             _automationsOverview?.SetConnection(GatewayClient);
             SynchronizeUsageProviderConnection();
+            _themeCatalog?.SetConnection(GatewayClient, snap.GatewayId);
+            _builtinThemes?.SetConnection(GatewayClient, snap.GatewayId);
             if (_appState != null) _appState.Status = mapped;
             _windowManager?.UpdateHubTitleBarStatus(snap, mapped);
             _trayController?.ApplyConnectionState(mapped, snap.OverallState);

@@ -72,7 +72,7 @@ internal sealed class ReactorChatProviderReview : Component<ReactorChatProviderR
                         : Empty().Grid(column: 2)))
             .MinHeight(ChatVisuals.ReviewMinHeight)
             .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.ReviewVerticalInset)
-            .CornerRadius(ChatVisuals.ReviewRadius)
+            .ThemedCorner(() => ChatVisuals.ReviewRadius)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush")).BorderThickness(1)
             .AutomationId("ChatProviderReview")

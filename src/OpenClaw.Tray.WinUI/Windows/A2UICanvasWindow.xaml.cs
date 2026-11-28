@@ -59,6 +59,8 @@ public sealed partial class A2UICanvasWindow : WindowEx
     public A2UICanvasWindow(IActionSink actions, MediaResolver media, IOpenClawLogger logger)
     {
         InitializeComponent();
+        // The node opens canvases outside WindowManager; the policy keeps their Mica choice in step with Settings.
+        Theming.BackdropPolicy.Apply(this);
         this.SetIcon("Assets\\openclaw.ico");
         // Title is set programmatically (rather than via XAML literal) so we
         // never flash "Canvas" in en-US before the locale's resw value loads.

@@ -49,6 +49,8 @@ public interface IOperatorGatewayClient
     event EventHandler<JsonElement>? CronEventReceived { add { } remove { } }
     /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config).</summary>
     event EventHandler<string>? SystemsInventoryChanged { add { } remove { } }
+    /// <summary>Gateway themes may have changed (<c>plugins.changed</c> or <c>users.prefs.changed</c>). Argument is the event name.</summary>
+    event EventHandler<string>? ThemeCatalogInvalidated { add { } remove { } }
     /// <summary>A node published new host statistics.</summary>
     event EventHandler<Systems.NodeHostStatsEvent>? NodeHostStatsReceived { add { } remove { } }
     event EventHandler<JsonElement>? AgentsListUpdated;
@@ -307,6 +309,12 @@ public interface IOperatorGatewayClient
     /// <summary>Fetches the authenticated user's avatar from the Gateway route. Older clients report Unsupported.</summary>
     Task<UserAvatarResult> ResolveUserAvatarAsync(string profileId, string? revision, CancellationToken cancellationToken = default)
         => Task.FromResult(UserAvatarResult.Of(UserAvatarStatus.Unsupported));
+    /// <summary>
+    /// Reads one text file from the connected Gateway's static Control UI (see <see cref="Themes.ControlUiTextReader"/>),
+    /// same-origin and under the Control UI root only. Null when unavailable; clients without HTTP access return null.
+    /// </summary>
+    Task<string?> ReadControlUiTextAsync(string path, string mediaType, int maxBytes, CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>(null);
 }
 
 public sealed record CronRunRequestResult(

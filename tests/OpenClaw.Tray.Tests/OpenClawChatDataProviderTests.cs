@@ -164,6 +164,37 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task DraftSendCapturedBeforeSessionIdentityArrives_IsDispatched()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "first-run", Status = "started" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var capturedSessionId = provider.GetSessionId("main");
+        Assert.Null(capturedSessionId);
+        // A just-materialized session gets its id from a sessions.list that can land
+        // between the composer's capture and admission.
+        bridge.RaiseSessions([new SessionInfo
+        {
+            Key = "main", IsMain = true, DisplayName = "Main session", Status = "active",
+            SessionId = "materialized-session",
+        }]);
+
+        var outcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "draft text",
+            "draft-send-id",
+            CancellationToken.None,
+            attachments: null,
+            expectedSessionId: capturedSessionId);
+
+        Assert.Equal(ChatSendOutcome.Accepted, outcome);
+        Assert.Equal("draft-send-id", Assert.Single(bridge.SentIdempotencyKeys));
+        Assert.Equal("materialized-session", Assert.Single(bridge.SentSessionIds));
+    }
+
+    [Fact]
     public async Task DraftRetryCachedRejection_IsDefinitiveAndRemovesUnconfirmedBubble()
     {
         var (bridge, provider, snapshots, notifications) = CreateProvider([MainSession()]);

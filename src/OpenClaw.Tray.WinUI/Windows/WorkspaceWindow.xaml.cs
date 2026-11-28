@@ -1819,7 +1819,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
         // Ctrl+E is the search shortcut shown in the placeholder; Ctrl+K remains its alias.
         // Settings keeps its existing F alias; Chat leaves F to its own content.
-        else if (ctrl && (e.Key == global::Windows.System.VirtualKey.K ||
+        // AltGr arrives as Ctrl+Alt, so Alt must be up or AltGr+E cannot type characters such as Polish "ę".
+        else if (ctrl && !alt && (e.Key == global::Windows.System.VirtualKey.K ||
                      e.Key == global::Windows.System.VirtualKey.E ||
                      (IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)))
         {

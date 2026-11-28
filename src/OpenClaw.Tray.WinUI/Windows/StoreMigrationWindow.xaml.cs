@@ -37,6 +37,7 @@ public sealed partial class StoreMigrationWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleBarDrag);
         SystemBackdrop = new MicaBackdrop();
+        Theming.BackdropPolicy.Apply(this);
         this.SetWindowSize(720, 820);
         var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32(

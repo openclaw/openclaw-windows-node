@@ -4528,6 +4528,48 @@
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>选择浅色、深色，或使用 Windows 设置。</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>网关主题</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>使用 OpenClaw 仪表板主题的颜色和字体。Windows 高对比度始终优先。</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Windows 默认</value>
+  </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Mica 背景</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>使用 Windows 默认主题时，让桌面透过窗口背景显示。Gateway 主题始终使用纯色。</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Header.Text" xml:space="preserve">
+    <value>背景图案</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
+    <value>在新聊天和对话后面显示主题图案。跟随 Gateway 主题时，将使用你在仪表板中的选择。</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>仪表板默认设置</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
+    <value>无</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_Faded.Content" xml:space="preserve">
+    <value>淡化</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_FullBleed.Content" xml:space="preserve">
+    <value>全幅</value>
+  </data>
+  <data name="SettingsPage_BackgroundVisibility.Header" xml:space="preserve">
+    <value>图案强度</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>跟随网关主题</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>使用在 OpenClaw 仪表板中选择的主题，并在其更改时同步更新。</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>系统</value>
   </data>
@@ -4630,11 +4672,23 @@
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>打开引导</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>自动清理不可用</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>卸载 OpenClaw 前，请在“设置 &gt; 本地网关”中移除 WSL 网关。只有在没有其他 Companion 版本使用 Store 网关时，才在 Windows“设置 &gt; 应用”中将其移除。</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Store 网关清理不可用</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>卸载 OpenClaw 前，请在 Windows“设置 &gt; 应用”中移除 Store 网关，但仅在没有其他 Companion 版本使用它时执行。</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>网关清理</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>在 Windows 设置中卸载 OpenClaw 会自动移除托管网关。使用下方的“移除本地网关”可移除网关并保留应用。</value>
+    <value>如果策略允许，在 Windows 设置中卸载 OpenClaw 会自动移除托管网关。如果 PowerShell 策略阻止清理，请在此移除 WSL 网关；只有在没有其他已安装的 Companion 版本使用 Store 网关时，才在卸载前通过 Windows 设置 &gt; 应用将其移除；否则网关可能会保留。</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>删除 WSL 发行版 (OpenClawGateway)、其磁盘映像、自动启动项,并清除网关凭据。您的 MCP 令牌将被保留。引导将重置。</value>
@@ -6243,6 +6297,8 @@
   <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>由 OpenClaw 管理</value></data>
   <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>未安装</value></data>
   <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>未安装</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Title" xml:space="preserve"><value>本地 AI 需要由此应用安装的 Gateway</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Message" xml:space="preserve"><value>本地 AI 仅适用于此应用在这台电脑上安装的 Gateway。当前活动的 Gateway 不是由此应用安装的，因此本地 AI 设置无法使用它。若要使用本地 AI，请从“连接”安装本地 Gateway。</value></data>
   <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>未知</value></data>
   <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>已下载并验证</value></data>
   <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>已加载到 GPU</value></data>
@@ -6384,7 +6440,6 @@
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已复制</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>复制失败</value></data>
-  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>消息文本</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理强度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>

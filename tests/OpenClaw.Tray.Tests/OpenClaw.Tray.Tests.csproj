@@ -21,7 +21,7 @@
   <ItemGroup>
     <PackageReference Include="OpenTelemetry" Version="1.16.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\..\src\OpenClaw.Connection\OpenClaw.Connection.csproj" />
     <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
@@ -300,6 +300,11 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\NavigationScopeManager.cs" Link="Presentation\NavigationScopeManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNavigationService.cs" Link="Presentation\AppNavigationService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsPageViewModel.cs" Link="Presentation\SettingsPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\GatewayThemeCatalog.cs" Link="Theming\GatewayThemeCatalog.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\GatewayThemeFollower.cs" Link="Theming\GatewayThemeFollower.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\GatewayBuiltinThemeResolver.cs" Link="Theming\GatewayBuiltinThemeResolver.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\ThemeResourceProjection.cs" Link="Theming\ThemeResourceProjection.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\PopoverSurfacePolicy.cs" Link="Theming\PopoverSurfacePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPagePresentationTypes.cs" Link="Presentation\PermissionsPagePresentationTypes.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageRuntimeSource.cs" Link="Presentation\PermissionsPageRuntimeSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageViewModel.cs" Link="Presentation\PermissionsPageViewModel.cs" />

@@ -208,7 +208,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             setSpeakingEntryId(entry.Id);
             try
             {
-                await readAloud(StripMarkdownForSpeech(text));
+                await readAloud(text);
             }
             catch (Exception ex)
             {
@@ -716,7 +716,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Padding(12, 8)
             .Margin(ChatVisuals.Gutter(viewportWidth) + ChatVisuals.ProseInset, 8)
             .MaxWidth(ChatVisuals.ReadingWidth)
-            .CornerRadius(8)
+            .ThemedCorner(8)
             .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationId("ChatHistoryFailedStatus")
@@ -827,12 +827,19 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 // Natural font metrics scale with accessibility text size and add no trailing leading.
                 .LineHeight(0)
                 .Set(block => block.LineStackingStrategy = LineStackingStrategy.MaxHeight)
-                .IsTextSelectionEnabled(true));
+                .IsTextSelectionEnabled(true)
+                // The bubble is outside the Markdown restyle pass, so it follows a theme switch while mounted.
+                .OnMountAdd(control => ChatThemeChanges.Watch(control, () => ChatVisuals.ApplyBodyFont(control)))
+                .OnUnmountAdd(control =>
+                {
+                    ChatThemeChanges.Unwatch(control);
+                    ChatVisuals.ClearFontRole(control);
+                }));
         }
 
         var bubble = Border(VStack(8, content.ToArray()))
             .Background(Theme.Ref("ChatUserBrush"))
-            .CornerRadius(ChatVisuals.SurfaceRadius)
+            .ThemedCorner(() => ChatVisuals.SurfaceRadius)
             .Padding(16, 12)
             .MaxWidth(720)
             .HAlign(HorizontalAlignment.Right);
@@ -978,25 +985,21 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     // URLs) are real WinUI hyperlinks in the Windows accent color, without an
     // underline, that open in the default browser. Reactor admits only http/https/mailto; any other
     // scheme renders as plain label text. Images and raw HTML stay inert.
+    // Realized rows refresh on every streamed delta; the component's props gate skips
+    // sanitizing, parsing and rebuilding messages whose text has not changed.
     internal static Element BuildSafeMarkdown(
-        string? text, Func<string, bool>? tryCopy = null, bool compactSecondaryReading = false)
-        => Component<ChatMarkdownMessageView, ChatMarkdownMessageProps>(
-            new(text ?? string.Empty, tryCopy, compactSecondaryReading));
+        string? text, Func<string, bool>? tryCopy = null, bool compactSecondaryReading = false) =>
+        Component<ChatMarkdownView, ChatMarkdownProps>(new(text, tryCopy, compactSecondaryReading));
 
-    internal static Element BuildMessageMarkdown(
-        string text, Func<string, bool>? tryCopy,
-        MarkdownTextSelectionOptions selectionOptions, bool compactSecondaryReading)
+    internal static Element RenderSafeMarkdown(string? text, Func<string, bool>? tryCopy, bool compactSecondaryReading)
     {
-        var sanitized = ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true);
+        var sanitized = ChatMarkdownSanitizer.Sanitize(text ?? string.Empty, preserveWebLinks: true);
         var parts = ChatMarkdownDisclosures.Parse(sanitized);
         return ChatMarkdownPresentation.Disclosures(
-            parts,
-            markdown => BuildInertMarkdown(markdown, tryCopy, selectionOptions, compactSecondaryReading),
-            selectionOptions);
+            parts, markdown => BuildInertMarkdown(markdown, tryCopy, compactSecondaryReading));
     }
 
-    private static Element BuildInertMarkdown(string text, Func<string, bool>? tryCopy,
-        MarkdownTextSelectionOptions selectionOptions, bool compactSecondaryReading)
+    private static Element BuildInertMarkdown(string text, Func<string, bool>? tryCopy, bool compactSecondaryReading)
     {
         var options = new MarkdownOptions
         {
@@ -1007,40 +1010,19 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             ListItem = row => ChatMarkdownPresentation.ListItem(row, compactSecondaryReading),
             ThematicBreak = ChatMarkdownPresentation.ThematicBreak,
             BlockQuote = ChatMarkdownPresentation.BlockQuote,
-            Table = ChatMarkdownPresentation.Table,
             TableHeaderBackground = null,
             TableCellPadding = new Thickness(ChatVisuals.TableCellHorizontalInset, ChatVisuals.TableCellVerticalInset,
                 ChatVisuals.TableCellHorizontalInset, ChatVisuals.TableCellVerticalInset),
-            TextSelection = selectionOptions,
-            CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(
-                code, language, tryCopy: tryCopy, selectionOptions: selectionOptions),
+            CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(code, language, tryCopy: tryCopy),
             CodeFontFamily = ChatVisuals.CodeFontFamily,
             // GitHub dialect (tables, strikethrough, task lists, URL/www/email autolinks)
             // without HTML, plus the web chat's `breaks: true` single-newline line breaks.
             ParserFlags = MarkdownParserFlags.DialectGitHub | MarkdownParserFlags.NoHtml |
                 MarkdownParserFlags.HardSoftBreaks,
-            Image = (alt, _) =>
-            {
-                var label = string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]";
-                return MarkdownTextSelection.Surface(label, Text(
-                    label,
-                    compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
-                    FontWeights.Normal,
-                    "ChatProseTextBrush")
-                    .FontFamily(ChatVisuals.BodyFontFamily)
-                    .IsTextSelectionEnabled(false));
-            },
-            HtmlBlock = raw =>
-            {
-                var label = ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw);
-                return MarkdownTextSelection.Surface(label, Text(
-                    label,
-                    compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
-                    FontWeights.Normal,
-                    "ChatProseTextBrush")
-                    .FontFamily(ChatVisuals.BodyFontFamily)
-                    .IsTextSelectionEnabled(false));
-            },
+            Image = (alt, _) => InertText(
+                string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]", compactSecondaryReading),
+            HtmlBlock = raw => InertText(
+                ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw), compactSecondaryReading),
         };
 
         return ChatMarkdownPresentation.WithInlineStyling(
@@ -1048,6 +1030,14 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 Microsoft.UI.Reactor.Advanced.Factories.Markdown(text, options), compactSecondaryReading),
             compactSecondaryReading);
     }
+
+    private static Element InertText(string label, bool compactSecondaryReading) =>
+        Text(label,
+                compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
+                FontWeights.Normal,
+                "ChatProseTextBrush")
+            .FontFamily(ChatVisuals.BodyFontFamily)
+            .IsTextSelectionEnabled(true);
 
     private static Element BuildAssistantFooter(
         ReactorTimelineRow row,
@@ -1207,7 +1197,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             return Viewbox(Border(Empty())
                     .Background(new ImageBrush { ImageSource = bitmap, Stretch = Stretch.Uniform })
                     .Size(pixelWidth * scale, pixelHeight * scale)
-                    .CornerRadius(8))
+                    .ThemedCorner(8))
                 .Set(viewbox =>
                 {
                     viewbox.Stretch = Stretch.Uniform;
@@ -1228,7 +1218,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Center();
         var glyphBackground = Border(glyph)
             .Size(32, 32)
-            .CornerRadius(6)
+            .ThemedCorner(6)
             .Background(Theme.Ref("SubtleFillColorSecondaryBrush"));
         var name = Text(
                 attachment.DisplayFileName,
@@ -1255,7 +1245,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 glyphBackground.Margin(0, 0, 8, 0).Grid(column: 0),
                 VStack(4, name, mimeType).Grid(column: 1)))
             .Padding(8)
-            .CornerRadius(8)
+            .ThemedCorner(8)
             .BorderThickness(1)
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .Background(Theme.Ref("ChatCardBrush"))
@@ -1383,7 +1373,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 "ControlStrokeColorDefaultBrush",
                 Color.FromArgb(0x40, 0x80, 0x80, 0x80)))
             .BorderThickness(1)
-            .CornerRadius(12);
+            .ThemedCorner(12);
     }
 
     private static void AddPermissionDetails(List<Element> children, string detail)
@@ -1399,7 +1389,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .FontFamily(new FontFamily("Cascadia Code, Consolas"))
             .IsTextSelectionEnabled(true))
             .Padding(10, 8)
-            .CornerRadius(6)
+            .ThemedCorner(6)
             .Background(BrushFor(
                 "SubtleFillColorSecondaryBrush",
                 Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
@@ -1438,7 +1428,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Margin(0, 8)
             .Padding(12, 8)
             .HAlign(HorizontalAlignment.Center)
-            .CornerRadius(12)
+            .ThemedCorner(12)
             .Background(Theme.Ref(isError ? "SystemFillColorCriticalBackgroundBrush" : "SubtleFillColorTertiaryBrush"));
     }
 
@@ -1525,15 +1515,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
 
         return new SolidColorBrush(fallback);
-    }
-
-    private static string StripMarkdownForSpeech(string text)
-    {
-        var result = System.Text.RegularExpressions.Regex.Replace(text, @"```[\s\S]*?```", " code block ");
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"`([^`]+)`", "$1");
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"!\[[^\]]*\]\([^)]*\)", " image ");
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"\[([^\]]+)\]\([^)]*\)", "$1");
-        return System.Text.RegularExpressions.Regex.Replace(result, @"[*_#>]+", " ");
     }
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<byte[], BitmapImage>

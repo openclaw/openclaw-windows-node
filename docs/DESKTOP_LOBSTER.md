@@ -97,9 +97,11 @@ animator or a raster conversion.
 Microsoft.UI.Reactor dependency. `DesktopCompanionBubble` declares the speech bubble,
 literal notification text and actions. The bubble is hosted by a second
 `ReactorHostControl` inside a windowed `Popup` with `ShouldConstrainToRootBounds=false`
-and a `DesktopAcrylicBackdrop`, because WinUI connects a system backdrop only for
-windowed popups. The frame fills with `LayerOnAcrylicFillColorDefaultBrush` and strokes
-with `SurfaceStrokeColorFlyoutBrush`, matching the chat flyouts. The popup has no
+and system desktop acrylic, because WinUI connects a system backdrop only for
+windowed popups. `PopoverAcrylicBackdrop` renders that acrylic in the bubble's own light or
+dark theme: the stock `DesktopAcrylicBackdrop` follows the Windows app mode, so a Dark
+Companion on light Windows showed white text on light acrylic. Under the Windows look the frame fills with `LayerOnAcrylicFillColorDefaultBrush`
+and strokes with `SurfaceStrokeColorFlyoutBrush`, matching the chat flyouts. The popup has no
 speech tail, follows the app theme, and is anchored above the mascot.
 Each host reconciles updates from the shared presentation state.
 A Reactor `XamlHostElement` retains the exact setup control and animator across
@@ -107,6 +109,32 @@ updates. Only notification arrivals restart its
 entrance; theme/layout renders do not. Closing the window disposes the Reactor
 host, unsubscribes presentation updates, and disables the retained animator.
 No companion XAML or separate animation framework is required.
+
+The bubble follows the Companion appearance live, through the same
+`ThemeBackdropPolicy` as Mica windows. `PopoverSurfacePolicy` chooses its surface and
+`BackdropPolicy.Configured` re-applies it whenever App reconfigures the appearance,
+theme or High Contrast; the bubble's own light/dark change re-applies it too:
+
+| Appearance | Backdrop | Fill and stroke |
+| --- | --- | --- |
+| Windows default, Mica backdrop on | System acrylic in the bubble's theme | Fluent, as above |
+| Windows default, Mica backdrop off | None | `SolidBackgroundFillColorQuarternaryBrush` (acrylic's opaque color) and the Fluent stroke |
+| Gateway theme (either Mica setting) | None | The dashboard toast's opaque `--popover` and `--border`; the `--card` when the theme's text can't be read on its popover |
+| High Contrast | Per the Mica checkbox | Fluent High Contrast resources |
+
+If a theme's action-link colors cannot be read on the bubble, only its
+**Quick reply** and **Notifications** links use the readable body color,
+including hover and pressed states. Other themed surfaces keep their accent.
+Windows default and High Contrast retain their native link resources.
+
+Outside High Contrast the window resolves the Fluent fill and stroke for the bubble's own
+light or dark mode and passes them as plain colors, like a theme's. A `{ThemeResource}`
+style on the popup frame kept the app mode's fill in the running Companion: a dark
+Companion on light Windows that cleared a theme with Mica off showed a white bubble.
+
+The dashboard defines no per-theme lobster color (its `--lobster-icon-*` tokens change
+only between light and dark), so the mascot keeps its own light, dark and High
+Contrast palettes under every theme.
 
 `DesktopCompanionWindow` remains the native window/input adapter using the
 existing WinUIEx `TransparentTintBackdrop`. An undecorated topmost `AppWindow` is shown without

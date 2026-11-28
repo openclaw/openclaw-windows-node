@@ -566,6 +566,12 @@ channel selection, source/Store overrides, exact pins, archive integrity and
 provenance without network access or changing installed packages.
 `scripts\test-gateway-packaged-release.ps1` covers release/tag resolution, embedded
 payload identity, asset digest, extraction safety and inventory-verified cache reuse.
+`scripts\test-gateway-theme-upstream.ps1` covers how the daily `gateway-theme-sync.yml`
+workflow selects the Gateway commit in the digest-matched x64 package. Local source fixtures
+also exercise the headless Edge generator's corner geometry and its pinned inventory/branding check.
+`scripts\test-gateway-theme-sync-publish.ps1` mocks Git and GitHub to cover leased branch updates,
+declines at the closed PR's head, and recovery without overwriting human commits or PR descriptions.
+Neither test publishes or needs credentials. Live publication requires a separately configured GitHub App.
 
 The `change-classification` job emits explicit booleans for `core_tests`,
 `tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,
@@ -895,7 +901,7 @@ fixture tests.
 
 | Rule | Do | Don't |
 |---|---|---|
-| Wait for an observable condition | `TestSupport.WaitForRenderedConditionAsync` for in-process WinUI (checks every frame and every 50 ms, bounded by `OPENCLAW_UI_RENDER_WAIT_TIMEOUT_SECONDS`), `WaitUiAsync` for Gateway fixture UI Automation, or a `TaskCompletionSource` that the owner completes | Use `Task.Delay`, `Thread.Sleep`, or a fixed number of `SettleAsync` dispatcher cycles as readiness |
+| Wait for an observable condition | `TestSupport.WaitForRenderedConditionAsync` for in-process WinUI (checks every frame and every 50 ms, bounded by `OPENCLAW_UI_RENDER_WAIT_TIMEOUT_SECONDS`; at the deadline it drains queued UI work, bounded by one more budget, and checks once more, so a UI thread stalled past the deadline cannot fail a result it was producing), `WaitUiAsync` for Gateway fixture UI Automation, or a `TaskCompletionSource` that the owner completes | Use `Task.Delay`, `Thread.Sleep`, or a fixed number of `SettleAsync` dispatcher cycles as readiness |
 | Acquire the element inside the wait | Capture the element in the passing poll and use that capture: `WaitForElementByIdAsync`, `InvokeWhenEnabledAsync`, or `(target = FindById(run, id)) is { Current.IsEnabled: true }` | Call `FindById(...)!`, `FindFirst(...)!`, or a throwing `Find(root, id)` once, or reuse an element across a re-render (UIA "Pattern not found") |
 | Settle geometry before asserting it | Require consecutive identical bounds, scroll the target into view, then assert with an explicit tolerance. See `WaitForStablePageGeometryAsync` and the Sessions toast settle in `GatewayFixtureUiTests`; `onProbeError` resets the sample when an element disappears | Assert position, visibility, or scroll offset while layout, scrolling, or an animation is still moving |
 | Keep ownership tri-state while polling | Keep polling while ownership is unproven (element missing, a windowless XAML zero process ID, a parent not yet attached). Fail fast only on positive foreign evidence, such as another process or window. Use `NativeUiOwnership.IsOwnedDescendant` as the final proof | Put `Assert.True(IsOwnedDescendant(...))` inside a polling predicate, which turns a transient state into a hard failure |

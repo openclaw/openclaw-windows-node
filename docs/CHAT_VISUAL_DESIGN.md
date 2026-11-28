@@ -1375,21 +1375,15 @@ same resources and bounded layouts. Markdown sanitization, disabled HTML,
 inert images, list measurement, timeline keys and scroll-follow remain with
 their existing owners.
 
-Assistant Markdown opts into one Reactor text-selection scope per message,
-spanning paragraphs, headings, list content, tables, code and expanded
-disclosures. Reactor owns pointer and keyboard selection, geometry, scrolling
-and the UI Automation text provider. Neighboring message rows, code toolbar
-labels and buttons, and collapsed disclosure bodies are outside the selected
-document. OpenClaw registers the summary once and supplies disclosure visibility;
-it does not infer selectable text from Reactor's layout tree.
-
-Selection copy has one clipboard writer in Reactor. Its `OnCopyResult` callback
-only updates native localized Copied or Copy failed feedback outside the
-selection scope. Feedback resets after two seconds; content replacement and
-unmount fence stale callbacks and timers. The separate whole-message and code
-Copy buttons retain their existing clipboard and feedback paths. Native
-acceptance for cross-block selection and recycling is required in addition to
-the mounted typography and layout checks.
+Assistant Markdown text, code and table blocks are individually selectable with
+native WinUI text selection. Reactor preview.18's `MarkdownTextSelection` is
+not used as an interim mitigation while upstream fixes and matched long-chat
+typing and streaming latency/frame-time proof are pending.
+This does not provide cross-block selection or click-out deselection parity.
+Restore those behaviors in a separate downstream change only after the fixed
+Reactor package is released and selection parity and performance are verified.
+The whole-message and code Copy buttons keep their own clipboard and feedback
+paths.
 
 Assistant Markdown accepts balanced, block-level `<details>` wrappers with a
 nonempty `<summary>` as an OpenClaw extension. The summary may follow the
@@ -1408,7 +1402,8 @@ Assistant links follow the web chat's anchor policy: Markdown links, bare
 accent color without an underline, and open in the default browser. Inline
 code keeps its monospace run. A text highlighter uses the
 `ControlFillColorSecondary` color for the chat element's theme, even when it
-differs from the app theme. High Contrast keeps system styling.
+differs from the app theme; a Gateway theme paints that chip with its `InlineCode`
+color for the chat's own mode. High Contrast keeps system styling.
 A rounded, bordered chip like the web needs a Reactor inline-code hook. Only
 absolute http/https destinations survive sanitization (Reactor additionally
 admits only http/https/mailto); any other scheme, relative path or image stays

@@ -443,6 +443,43 @@ public class ChatMarkdownAstBuilderTests
     }
 
     [Fact]
+    public void Link_DisplayOnly_OmitsHref()
+    {
+        var doc = new ChatMarkdownAstBuilder(linkFlattening: MdLinkFlattening.DisplayOnly)
+            .Build("read [the docs](https://example.com/docs) first");
+        var para = Assert.IsType<MdParagraph>(Assert.Single(doc.Blocks));
+        var joined = string.Join("", para.Inlines.OfType<MdInlineText>().Select(r => r.Text));
+        Assert.Contains("the docs", joined);
+        Assert.DoesNotContain("https://", joined);
+    }
+
+    [Fact]
+    public void Link_DisplayOnly_AutolinkWithNormalisedTarget_EmitsNothing()
+    {
+        // md4c rewrites a bare "www." or e-mail autolink into a target with a
+        // scheme ("http://www.…", "mailto:…"), so display and target differ and
+        // an equality-based filter would speak the URL.
+        var builder = new ChatMarkdownAstBuilder(linkFlattening: MdLinkFlattening.DisplayOnly);
+
+        foreach (var markdown in new[] { "visit www.example.com/x now", "mail dev@example.com now" })
+        {
+            var para = Assert.IsType<MdParagraph>(Assert.Single(builder.Build(markdown).Blocks));
+            var joined = string.Join("", para.Inlines.OfType<MdInlineText>().Select(r => r.Text));
+            Assert.DoesNotContain("www.", joined);
+            Assert.DoesNotContain("@example.com", joined);
+        }
+    }
+
+    [Fact]
+    public void Link_DisplayOnly_AutolinkWithNoDisplay_EmitsNothing()
+    {
+        var doc = new ChatMarkdownAstBuilder(linkFlattening: MdLinkFlattening.DisplayOnly)
+            .Build("<https://example.com>");
+        var para = Assert.IsType<MdParagraph>(Assert.Single(doc.Blocks));
+        Assert.DoesNotContain("https://", string.Join("", para.Inlines.OfType<MdInlineText>().Select(r => r.Text)));
+    }
+
+    [Fact]
     public void Image_FlattenedToInertAltText()
     {
         var doc = Build("![puppy](https://example.com/p.png)");

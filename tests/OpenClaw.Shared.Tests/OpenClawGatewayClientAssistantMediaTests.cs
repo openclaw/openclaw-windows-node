@@ -553,6 +553,54 @@ public sealed class OpenClawGatewayClientAssistantMediaTests
             request => Assert.Equal("shared-token-2", request.AuthorizationParameter));
     }
 
+    [Theory]
+    [InlineData("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", true)]
+    [InlineData("data:image/png;base64,!!!!", false)]
+    [InlineData("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=", false)]
+    public async Task ResolveAssistantMedia_InlineImage_DecodesLocallyWithoutConnection(string dataUrl, bool ready)
+    {
+        using var identity = new TempDirectory("assistant-inline-image-");
+        var handler = new SequentialMediaHandler();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token",
+            identityPath: identity.Path, assistantMediaHandler: handler);
+
+        var result = await client.ResolveAssistantMediaAsync("main", new()
+        {
+            Kind = ChatMediaContentKind.Image,
+            Source = ChatMediaContentSource.Structured,
+            InlineDataUrl = dataUrl,
+        });
+
+        Assert.Equal(ready ? AssistantMediaResolutionStatus.Ready : AssistantMediaResolutionStatus.Unavailable, result.Status);
+        if (ready)
+        {
+            Assert.Equal(Convert.FromBase64String(dataUrl[(dataUrl.IndexOf(',') + 1)..]), result.Data);
+            Assert.Equal("image/png", result.MimeType);
+        }
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task ResolveAssistantMedia_InlineImage_CancellationReturnsUnavailable()
+    {
+        using var identity = new TempDirectory("assistant-inline-image-cancelled-");
+        var handler = new SequentialMediaHandler();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token",
+            identityPath: identity.Path, assistantMediaHandler: handler);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await client.ResolveAssistantMediaAsync("main", new()
+        {
+            Kind = ChatMediaContentKind.Image,
+            Source = ChatMediaContentSource.Structured,
+            InlineDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        }, cancellation.Token);
+
+        Assert.Equal(AssistantMediaResolutionStatus.Unavailable, result.Status);
+        Assert.Empty(handler.Requests);
+    }
+
     [Fact]
     public void TryDecodeBoundedBase64_RejectsDecodedSizeOverflow()
     {

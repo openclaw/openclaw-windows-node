@@ -84,6 +84,27 @@ public sealed class WindowManagerTests
     }
 
     [Fact]
+    public void LocalAiSetup_ExplainsUnmanagedActiveGatewayInsteadOfOpeningOnboarding()
+    {
+        var manager = ReadManager();
+        var start = manager.IndexOf("public async Task ShowLocalAiSetupAsync()", StringComparison.Ordinal);
+        var end = manager.IndexOf("private async Task<LocalAiSetupResolution>", start, StringComparison.Ordinal);
+        AssertInOrder(manager[start..end],
+            "await ResolveLocalAiSetupRouteAsync()",
+            "resolution.Route == LocalAiSetupRoute.Provision &&",
+            "_callbacks.GetGatewayRegistry()?.GetActive() is not null",
+            "_callbacks.GetAppNotificationService()?.Show(new AppNotification",
+            "LocalizationHelper.GetString(\"LocalAiPage_UnmanagedGateway_Title\")",
+            "LocalizationHelper.GetString(\"LocalAiPage_UnmanagedGateway_Message\")",
+            "Severity = AppNotificationSeverity.Warning",
+            "ActionRoute = \"connection\"",
+            "ShowHub(\"connection\");",
+            "return;",
+            "if (resolution.Route == LocalAiSetupRoute.Provision)",
+            "await ShowOnboardingAsync();");
+    }
+
+    [Fact]
     public void NativeLocalAiSettingsEntry_BindsRouteBeforeWizardAndPreservesExistingChoices()
     {
         var manager = ReadManager();

@@ -4547,6 +4547,48 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>Escolha claro, escuro, ou use a configuração do Windows.</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>Tema do Gateway</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use as cores e as fontes de um tema do painel do OpenClaw. O Alto Contraste do Windows sempre tem prioridade.</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Padrão do Windows</value>
+  </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Plano de fundo Mica</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>Com o tema padrão do Windows, deixe a área de trabalho aparecer através do fundo das janelas. Os temas do Gateway sempre usam cores sólidas.</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Header.Text" xml:space="preserve">
+    <value>Arte de fundo</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
+    <value>Arte do tema atrás de novos chats e conversas. Ao seguir o tema do Gateway, sua escolha no painel é usada.</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>Padrão do painel</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
+    <value>Nenhuma</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_Faded.Content" xml:space="preserve">
+    <value>Esmaecida</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_FullBleed.Content" xml:space="preserve">
+    <value>Tela cheia</value>
+  </data>
+  <data name="SettingsPage_BackgroundVisibility.Header" xml:space="preserve">
+    <value>Intensidade da arte</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>Seguir o tema do Gateway</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use o tema selecionado no painel do OpenClaw e atualize quando ele mudar lá.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Sistema</value>
   </data>
@@ -4607,11 +4649,23 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>Abrir configuração inicial</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Limpeza automática indisponível</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Antes de desinstalar o OpenClaw, remova o Gateway WSL em Configurações &gt; Gateway local. Remova um Gateway da Store em Configurações do Windows &gt; Aplicativos somente se nenhuma outra variante do Companion o utilizar.</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Limpeza do Gateway da Store indisponível</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Antes de desinstalar o OpenClaw, remova o Gateway da Store em Configurações do Windows &gt; Aplicativos somente se nenhuma outra variante do Companion o utilizar.</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Limpeza do Gateway</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Desinstalar o OpenClaw nas Configurações do Windows remove automaticamente os Gateways gerenciados. Use Remover Gateway Local abaixo para remover um Gateway e manter o aplicativo.</value>
+    <value>Quando a política permitir, desinstalar o OpenClaw nas Configurações do Windows removerá automaticamente os Gateways gerenciados. Se a política do PowerShell bloquear a limpeza, remova o Gateway WSL aqui ou o Gateway da Store em Configurações do Windows &gt; Aplicativos somente se nenhuma outra variante instalada do Companion o utilizar, antes de desinstalar; caso contrário, um Gateway poderá permanecer.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Remove a distro WSL (OpenClawGateway), sua imagem de disco, a entrada de inicialização automática, e apaga as credenciais do Gateway. Seu token MCP é preservado. A integração será reiniciada.</value>
@@ -6280,6 +6334,8 @@ Abrir Canais no painel web.</value>
   <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>Gerenciado pelo OpenClaw</value></data>
   <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>Não instalado</value></data>
   <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>Não instalado</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Title" xml:space="preserve"><value>A IA local precisa de um Gateway deste aplicativo</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Message" xml:space="preserve"><value>A IA local só funciona com um Gateway que este aplicativo instala neste PC. O Gateway ativo não foi instalado por este aplicativo, então a configuração da IA local não pode usá-lo. Para usar a IA local, instale um Gateway local em Conexão.</value></data>
   <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>Desconhecido</value></data>
   <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>Baixado e verificado</value></data>
   <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>Carregado na GPU</value></data>
@@ -6437,7 +6493,6 @@ Abrir Canais no painel web.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 mensagem na fila</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copiado</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Falha ao copiar</value></data>
-  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Texto da mensagem</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Esforço</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Mais rápido</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Mais detalhado</value></data>

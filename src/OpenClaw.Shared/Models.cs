@@ -2144,6 +2144,13 @@ public sealed class ChatMediaContentInfo
 
     internal string? GatewaySource { get; set; }
 
+    /// <summary>
+    /// Validated <c>data:image/...;base64,</c> payload carried inline by the Gateway
+    /// (for example <c>input_image</c> reply blocks). It is decoded locally and must
+    /// never be fetched, displayed, logged, or persisted.
+    /// </summary>
+    internal string? InlineDataUrl { get; set; }
+
     /// <summary>Compares media identity and content without exposing private legacy transport references.</summary>
     public bool HasSameContent(ChatMediaContentInfo other) =>
         Kind == other.Kind &&
@@ -2161,7 +2168,8 @@ public sealed class ChatMediaContentInfo
         SizeBytes == other.SizeBytes &&
         DurationSeconds == other.DurationSeconds &&
         Playback == other.Playback &&
-        GatewaySource == other.GatewaySource;
+        GatewaySource == other.GatewaySource &&
+        InlineDataUrl == other.InlineDataUrl;
 }
 
 /// <summary>

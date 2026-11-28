@@ -7,7 +7,8 @@ internal interface IDesktopCompanionView
     event EventHandler? HideRequested;
     void Show();
     void Hide();
-    void ApplyTheme(string theme);
+    /// <summary>Applies a theme preference; <paramref name="refreshThemeResources"/> re-resolves recolored resources.</summary>
+    void ApplyTheme(string theme, bool refreshThemeResources = false);
     void ApplyScale(int percent);
     void Present(AppNotification? notification);
     void Close();
@@ -21,20 +22,27 @@ internal sealed class DesktopCompanionController : IDisposable
     private readonly IUiDispatcher _dispatcher;
     private readonly Func<IDesktopCompanionView> _createView;
     private readonly Action<Exception> _reportFailure;
+    private readonly Func<string> _themePreference;
     private readonly DesktopCompanionState _state = new();
     private IDesktopCompanionView? _view;
     private bool _started, _disposed, _failed;
     private bool _mainWindowVisible, _viewShown;
 
     public DesktopCompanionController(ISettingsStore settings, AppNotificationService notifications,
-        IUiDispatcher dispatcher, Func<IDesktopCompanionView> createView, Action<Exception> reportFailure)
+        IUiDispatcher dispatcher, Func<IDesktopCompanionView> createView, Action<Exception> reportFailure,
+        Func<string>? themePreference = null)
     {
         _settings = settings;
         _notifications = notifications;
         _dispatcher = dispatcher;
         _createView = createView;
         _reportFailure = reportFailure;
+        // App supplies the effective preference, which a one-palette Gateway theme can pin.
+        _themePreference = themePreference ?? (() => _settings.Current.AppTheme);
     }
+
+    /// <summary>Re-resolves the open view's theme resources after a Gateway theme recolored them.</summary>
+    public void RefreshTheme() => Dispatch(() => _view?.ApplyTheme(_themePreference(), refreshThemeResources: true));
 
     public void Start()
     {
@@ -80,7 +88,7 @@ internal sealed class DesktopCompanionController : IDisposable
             _view = _createView();
             _view.HideRequested += OnHideRequested;
         }
-        _view.ApplyTheme(settings.AppTheme);
+        _view.ApplyTheme(_themePreference());
         _view.ApplyScale(settings.DesktopCompanionScalePercent);
         if (!_viewShown)
         {

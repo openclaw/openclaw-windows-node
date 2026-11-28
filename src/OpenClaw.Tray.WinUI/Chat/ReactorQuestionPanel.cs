@@ -339,7 +339,7 @@ internal sealed class ReactorQuestionCard : Component<ReactorQuestionCardProps>
                 .Grid(column: 1)));
         return Border(VStack(12, header,
                 VStack(12, content.ToArray()).IsVisible(!props.Collapsed)))
-            .Padding(14).CornerRadius(20).BorderThickness(1).Set(ChatVisuals.StyleQuestionCard)
+            .Padding(14).ThemedCorner(20).BorderThickness(1).Set(ChatVisuals.StyleQuestionCard)
             .AutomationId("ChatQuestion_" + request.Id)
             .OnPreviewKeyDown((_, args) =>
             {

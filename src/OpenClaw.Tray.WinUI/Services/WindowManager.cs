@@ -714,6 +714,28 @@ internal sealed partial class WindowManager : IWindowManager
             return;
         }
         var resolution = await ResolveLocalAiSetupRouteAsync();
+        if (resolution.Route == LocalAiSetupRoute.Provision &&
+            _callbacks.GetGatewayRegistry()?.GetActive() is not null)
+        {
+            // Provision means no app-managed Gateway exists, so the active Gateway (remote or
+            // user-managed) cannot host Local AI. Explain instead of silently opening onboarding.
+            Logger.Info("Local AI setup requires an app-managed gateway; the active gateway is not one");
+            _callbacks.GetAppNotificationService()?.Show(new AppNotification
+            {
+                Id = $"local-ai-unmanaged-gateway-{Guid.NewGuid():N}",
+                Title = LocalizationHelper.GetString("LocalAiPage_UnmanagedGateway_Title"),
+                Message = LocalizationHelper.GetString("LocalAiPage_UnmanagedGateway_Message"),
+                // Only Warning/Error render as a banner; Informational would be invisible here.
+                Severity = AppNotificationSeverity.Warning,
+                Source = "local-ai",
+                ActionLabel = LocalizationHelper.GetString("HubWindow_NavigationViewItem_88.Content"),
+                ActionRoute = "connection",
+                DedupeKey = "local-ai-unmanaged-gateway",
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+            ShowHub("connection");
+            return;
+        }
         if (resolution.Route == LocalAiSetupRoute.Provision)
         {
             Logger.Info("Local AI recovery requires an existing app-managed gateway; opening full setup");

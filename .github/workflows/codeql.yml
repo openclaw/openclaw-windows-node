@@ -81,6 +81,12 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Normalize checkout for GitVersion once
+        # GitVersion 7 normalizes with one git process per ref and rewrites .git/config and
+        # .git/HEAD while parallel project builds read them. Normalize once, before any build.
+        shell: pwsh
+        run: ./scripts/Initialize-GitVersionCheckout.ps1
+
       - name: Restore dependencies
         run: |
           $ErrorActionPreference = 'Stop'

@@ -345,32 +345,6 @@ as well. That option enables only its own child and still rejects failed,
 skipped, and zero-test runs. The ordinary UI filter continues to exclude those
 keyboard-only cases; `-NativeInputProof` does not select them.
 
-`MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent`
-uses synthetic history in the shipped app to select and copy across paragraphs,
-lists, code, a table and a native collapsed details block. It checks exact
-normalized clipboard text, excludes adjacent messages and collapsed body text,
-switches to a second conversation and back to verify that copying from the
-focused message cannot leak another conversation's text, and exercises edge
-scrolling in the production chat ItemsView. Returning to the same message may
-retain its own selection. The disclosure is scrolled into view before its
-expanded body is checked. This case uses native pointer, keyboard and clipboard
-input, so run it only on an authorized, exclusive interactive desktop:
-
-```powershell
-$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
-$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
-$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path $env:TEMP 'openclaw-markdown-selection'
-$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
-dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
-  -p:Platform=ARM64 -r win-arm64 `
-  --filter 'FullyQualifiedName~MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent' `
-  --logger 'console;verbosity=normal'
-```
-
-The test captures only its owned app window. The fixture Gateway and profile are
-synthetic and disposable; this is not live Gateway, provider, or installed-app
-proof.
-
 ### Saved Gateway ownership and released profiles
 
 `GatewayManagement_UsesSavedOwnershipWithoutSetupState` renders native-only,
@@ -840,6 +814,49 @@ the next frame is a reply. `NodeExecDenialWireTests` acknowledges only validated
 methods or events, and malformed statistics fail the fixture. Continued
 statistics cannot extend its existing invocation cancellation deadline.
 
+## Gateway theme catalog proof
+
+The `gateway-themes` scenario serves a read-only `themes.list` and `themes.get`
+catalog (Gateway 2026.9+ shape) with built-ins that have no definition, a
+dark-only plugin theme (`fixture-themes/neon-night`), a light and dark plugin
+theme (`fixture-themes/paper-mint`) and a light-only imported theme
+(`user/fixture-sunset`). It advertises `plugins.changed` and
+`users.prefs.changed` and grants `operator.read` and `operator.sessions.read`.
+`themes.set` and `themes.import` are not advertised: the Companion keeps its own
+selection and never writes the Gateway's.
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario gateway-themes -Theme Dark
+```
+
+The host opens Settings, where the picker lists the fixture themes after the
+built-ins. Enter `reveal` in the host console to add `fixture-themes/aurora` and
+publish `plugins.changed`; the picker refreshes without reconnecting. Enter
+`select <theme-id>` to change the theme the fixture reports as selected (as a
+dashboard theme change would) and publish `users.prefs.changed`; with **Follow
+Gateway theme** on, the Companion switches to it. An id the catalog doesn't list
+is reported as a built-in newer than the Companion's table, which the Companion
+doesn't follow. With `select manuscript` and **Follow Gateway theme** on, capture
+a dark chat's user bubble, enter `accent #3a9b9b`, and capture the same bubble
+with its teal wash. Enter `accent theme` to restore the theme's own accent;
+`accent none` represents an unset preference. For artwork, enter
+`background full-bleed 1`, capture the same chat, then enter `background none`
+and capture it without artwork. `background faded 0.5` shows the fade on a new
+chat; `background clear` removes the saved dashboard preference. With Follow
+off, Settings shows the Companion's own style and strength again.
+This uses a synthetic profile, not a live dashboard. `GatewayThemeCatalogWireTests` proves the same catalog,
+definitions, event refreshes and following through the real authenticated
+client.
+
+The connected catalog reads `ui.accent` on refresh when the Gateway advertises
+`users.prefs.get` and grants a read-capable operator scope. Follow controls
+whether the Companion saves and applies that value, not whether the catalog
+reads it. An unknown preference keeps the last followed accent; an explicit
+`theme` or successful empty result clears it. The HTTP dashboard seam color is
+not read. For a low-contrast personal color, buttons keep the selected fill
+while native accent text and focus outlines can use the theme's more legible
+body text color.
+
 ## Targeted context-usage proof
 
 `ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage` opts into
@@ -1104,11 +1121,12 @@ count-pill `Border` needs resource-backed background precedence. The mounted
 assert the actual Light/Dark dialog theme; the count-pill regression below
 checks the native brush. These are dependency regression requirements, not
 evidence that the newly merged package combination has passed native proof.
-`NuGet.Config` maps Reactor exclusively to `artifacts/reactor-packages`.
+`NuGet.Config` maps Reactor exclusively to `artifacts/reactor-nuget-packages`.
 Run `.\scripts\Initialize-ReactorPackages.ps1` before direct WinUI restore,
 build or run commands; `build.ps1` and building through `run-app-local.ps1`
-already do this. The initializer verifies the official preview.18 release
-digests without changing global NuGet configuration or clearing its cache.
+already do this. The initializer verifies the preview.18 NuGet.org package
+digests. See [Reactor compatibility proof](WINDOWS_NODE_TESTING.md#reactor-compatibility-proof)
+for restore instructions if an earlier build cached the unsigned packages.
 A successful build alone is not dark-dialog proof.
 The count-pill contrast regression also checks the actual native brush after
 pooled reuse. A pooled Border must release a local null background when its

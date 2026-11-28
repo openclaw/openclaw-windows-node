@@ -542,6 +542,122 @@ foreach ($lane in $testLanes.GetEnumerator()) {
     }
 }
 
+# Each project build runs GitVersion.MsBuild. GitVersion 7 normalizes with one git process per
+# ref, so parallel project builds race on .git/config and .git/HEAD unless the job normalizes once first.
+function Get-GitVersionNormalizationViolations {
+    param([Parameter(Mandatory)][string]$WorkflowText)
+
+    $jobsText = $WorkflowText.Substring([regex]::Match($WorkflowText, "(?m)^jobs:\r?$").Index)
+    $buildPattern = [regex]::new(
+        "(?m)^\s+(?:run: )?(?:dotnet (?:build|publish|test|run|pack|msbuild) |\.[\\/]build\.ps1|\.[\\/]scripts[\\/](?:Invoke-CiTestSoak|Build-StoreMsix)\.ps1)")
+    # The shared anchor or an explicit step that runs the helper.
+    $normalizePattern = [regex]::new(
+        "(?m)^    - [&*]normalize-gitversion-checkout\r?$|^      run: \./scripts/Initialize-GitVersionCheckout\.ps1\r?$")
+    $violations = [System.Collections.Generic.List[string]]::new()
+    $checked = 0
+    foreach ($jobHeading in [regex]::Matches($jobsText, "(?m)^  ([a-zA-Z0-9_-]+):\r?$")) {
+        $jobName = $jobHeading.Groups[1].Value
+        $job = Get-JobBlock -Name $jobName -Text $jobsText
+        $firstBuild = $buildPattern.Match($job)
+        if (-not $firstBuild.Success) {
+            continue
+        }
+        $checked++
+        $normalize = $normalizePattern.Match($job)
+        if (-not $normalize.Success -or $normalize.Index -gt $firstBuild.Index) {
+            $violations.Add("CI job '$jobName' must normalize the checkout for GitVersion once before its first build.")
+        }
+    }
+    if ($checked -eq 0) {
+        $violations.Add("No CI build job was checked for one-time GitVersion normalization.")
+    }
+    $anchor = [regex]::Match($WorkflowText, "(?ms)^    - &normalize-gitversion-checkout\r?$.*?(?=^    - |\z)")
+    if (-not $anchor.Success -or $anchor.Value.IndexOf("run: ./scripts/Initialize-GitVersionCheckout.ps1", [StringComparison]::Ordinal) -lt 0) {
+        $violations.Add("The shared normalize-gitversion-checkout step must run Initialize-GitVersionCheckout.ps1.")
+    }
+    # Promotions check out older sources that may lack the helper, so every normalization step
+    # must be skipped by the knob in YAML rather than inside the script.
+    foreach ($run in [regex]::Matches($WorkflowText, "(?m)^\s+run: \./scripts/Initialize-GitVersionCheckout\.ps1\r?$")) {
+        $stepStart = $WorkflowText.LastIndexOf("    - ", $run.Index, [StringComparison]::Ordinal)
+        $step = $WorkflowText.Substring($stepStart, $run.Index - $stepStart)
+        if ($step.IndexOf("env.GitVersion_NoNormalizeEnabled != 'true'", [StringComparison]::Ordinal) -lt 0) {
+            $violations.Add("Every GitVersion normalization step must be skipped when GitVersion_NoNormalizeEnabled is 'true'.")
+        }
+    }
+    return , $violations
+}
+
+$normalizationViolations = Get-GitVersionNormalizationViolations -WorkflowText $workflow
+if ($normalizationViolations.Count -ne 0) {
+    throw ($normalizationViolations -join [Environment]::NewLine)
+}
+$buildMsixJob = Get-JobBlock "build-msix"
+$storeBuild = $buildMsixJob.IndexOf(".\scripts\Build-StoreMsix.ps1", [StringComparison]::Ordinal)
+$devBuild = $buildMsixJob.IndexOf(".\build.ps1 -Project WinUI", [StringComparison]::Ordinal)
+if ($storeBuild -lt 0 -or $devBuild -lt $storeBuild) {
+    throw "The GitVersion normalization negative control expects the Store MSIX build before the Dev MSIX build."
+}
+$msixWithoutStep = $buildMsixJob.Replace("    - *normalize-gitversion-checkout", "")
+$devBuildStep = $msixWithoutStep.LastIndexOf("`n    - ", $msixWithoutStep.IndexOf(".\build.ps1 -Project WinUI", [StringComparison]::Ordinal), [StringComparison]::Ordinal) + 1
+$coreTestsJob = Get-JobBlock "core-tests"
+$normalizationControls = @(
+    @{
+        Name = "a build job without the step"
+        Text = $workflow.Replace($coreTestsJob, [regex]::Replace($coreTestsJob, "(?ms)^    - &normalize-gitversion-checkout\r?$.*?(?=^    - )", ""))
+        Expected = "CI job 'core-tests' must normalize"
+    },
+    @{
+        Name = "the step after the Store MSIX build"
+        Text = $workflow.Replace($buildMsixJob, $msixWithoutStep.Insert($devBuildStep, "    - *normalize-gitversion-checkout`n"))
+        Expected = "CI job 'build-msix' must normalize"
+    },
+    @{
+        Name = "a step that promotions cannot skip"
+        Text = $workflow.Replace("      if: env.GitVersion_NoNormalizeEnabled != 'true'", "      if: always()")
+        Expected = "must be skipped when GitVersion_NoNormalizeEnabled"
+    }
+)
+foreach ($control in $normalizationControls) {
+    $controlViolations = (Get-GitVersionNormalizationViolations -WorkflowText $control.Text) -join [Environment]::NewLine
+    if ($controlViolations.IndexOf($control.Expected, [StringComparison]::Ordinal) -lt 0) {
+        throw "The GitVersion normalization contract did not reject $($control.Name)."
+    }
+}
+$codeQlNormalize = $codeQlWorkflow.IndexOf("run: ./scripts/Initialize-GitVersionCheckout.ps1", [StringComparison]::Ordinal)
+$codeQlBuild = $codeQlWorkflow.IndexOf("dotnet build openclaw-windows-node.slnx", [StringComparison]::Ordinal)
+if ($codeQlNormalize -lt 0 -or $codeQlBuild -lt 0 -or $codeQlNormalize -gt $codeQlBuild) {
+    throw "CodeQL must normalize the checkout for GitVersion once before building the solution."
+}
+$themeSyncWorkflow = Get-Content -LiteralPath (Join-Path $repoRootPath ".github\workflows\gateway-theme-sync.yml") -Raw
+$themeSyncNormalize = $themeSyncWorkflow.IndexOf("run: ./scripts/Initialize-GitVersionCheckout.ps1", [StringComparison]::Ordinal)
+$themeSyncBuild = $themeSyncWorkflow.IndexOf("dotnet test tests/OpenClaw.Shared.Tests", [StringComparison]::Ordinal)
+if ($themeSyncNormalize -lt 0 -or $themeSyncBuild -lt 0 -or $themeSyncNormalize -gt $themeSyncBuild) {
+    throw "Gateway theme sync must normalize the checkout for GitVersion once before building the theme tests."
+}
+
+# Release-tag and promotion runs disable normalization; the step must leave their checkout and env alone.
+$normalizationEnvFile = New-TemporaryFile
+try {
+    $normalizationScript = Join-Path $repoRootPath "scripts\Initialize-GitVersionCheckout.ps1"
+    $previousNoNormalize = $env:GitVersion_NoNormalizeEnabled
+    $previousGitHubEnv = $env:GITHUB_ENV
+    $env:GitVersion_NoNormalizeEnabled = 'true'
+    $env:GITHUB_ENV = $normalizationEnvFile.FullName
+    try {
+        & $normalizationScript | Out-Null
+    }
+    finally {
+        $env:GitVersion_NoNormalizeEnabled = $previousNoNormalize
+        $env:GITHUB_ENV = $previousGitHubEnv
+    }
+    if ((Get-Item -LiteralPath $normalizationEnvFile.FullName).Length -ne 0) {
+        throw "Initialize-GitVersionCheckout.ps1 must not change the job environment when normalization is disabled."
+    }
+}
+finally {
+    Remove-Item -LiteralPath $normalizationEnvFile.FullName -Force -ErrorAction SilentlyContinue
+}
+
 $uiJob = Get-JobBlock "ui-tests"
 $trayUiShardJob = Get-JobBlock "tray-ui-shard"
 foreach ($standardUiStep in @(
@@ -660,8 +776,8 @@ if ($coreJobIndex -lt 0) {
 $nonCoreWorkflow = $workflow.Remove($coreJobIndex, $coreJob.Length)
 foreach ($token in @(
         "path: ~/.nuget/packages",
-        'key: nuget-${{ runner.os }}-${{ hashFiles(''**/*.csproj'', ''**/Directory.Packages.props'') }}',
-        'restore-keys: nuget-${{ runner.os }}-'
+        'key: nuget-${{ runner.os }}-${{ hashFiles(''scripts/Initialize-ReactorPackages.ps1'') }}-${{ hashFiles(''**/*.csproj'', ''**/Directory.Packages.props'') }}',
+        'restore-keys: nuget-${{ runner.os }}-${{ hashFiles(''scripts/Initialize-ReactorPackages.ps1'') }}-'
     )) {
     $count = ([regex]::Matches($nonCoreWorkflow, [regex]::Escape($token))).Count
     if ($count -ne 12) {
@@ -1766,8 +1882,8 @@ foreach ($token in @(
         "needs: change-classification",
         "fetch-depth: 0",
         "outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true'",
-        "gittools/actions/gitversion/setup@v4",
-        "gittools/actions/gitversion/execute@v4",
+        "gittools/actions/gitversion/setup@389fe43e6b0189b98c40c43553070ac029304635",
+        "gittools/actions/gitversion/execute@389fe43e6b0189b98c40c43553070ac029304635",
         "semVer: `${{ steps.release_version.outputs.semVer }}",
         "majorMinorPatch: `${{ steps.release_version.outputs.majorMinorPatch }}",
         "isPrerelease: `${{ steps.release_version.outputs.isPrerelease }}",

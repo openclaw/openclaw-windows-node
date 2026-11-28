@@ -451,6 +451,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler? ConfigurationChanged;
     /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config). Argument is the event name.</summary>
     public event EventHandler<string>? SystemsInventoryChanged;
+    /// <summary>The Gateway pushed <c>plugins.changed</c> or <c>users.prefs.changed</c>. Argument is the event name.</summary>
+    public event EventHandler<string>? ThemeCatalogInvalidated;
     /// <summary>A node published new host statistics (<c>node.hostStats</c>).</summary>
     public event EventHandler<Systems.NodeHostStatsEvent>? NodeHostStatsReceived;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
@@ -626,7 +628,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _ephemeralOperatorCredential = ephemeralOperatorCredential;
         _useBoundedBootstrapScopes = useBoundedBootstrapScopes;
         _assistantMediaHttpClient = assistantMediaHandler is null
-            ? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = !IsPersonalTailscaleAuthentication })
+            ? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
             : new HttpClient(assistantMediaHandler, disposeHandler: true);
         SetAssistantMediaAuthToken(IsPersonalTailscaleAuthentication ? null : assistantMediaAuthToken);
         _currentGatewayUrl = gatewayUrl;
@@ -1678,7 +1680,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         }
 
         var mimeType = ReadFirstString(item, "mimeType", "mime_type", "contentType")?.Trim().ToLowerInvariant();
-        var hasMediaShape = normalizedType is "image" or "audio" or "video" or "file" or "attachment"
+        // OpenAI-style input_image / image_url blocks carry the image under image_url.
+        var isImageBlock = normalizedType is "image" or "inputimage" or "imageurl";
+        var hasMediaShape = isImageBlock
+            || normalizedType is "audio" or "video" or "file" or "attachment"
             || !string.IsNullOrWhiteSpace(mimeType)
             || ReadFirstString(item, "artifactId", "artifact_id") is not null
             || ReadFirstString(item, "url") is not null;
@@ -1687,7 +1692,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         var kind = (declaredKind ?? normalizedType) switch
         {
-            "image" => ChatMediaContentKind.Image,
+            "image" or "inputimage" or "imageurl" => ChatMediaContentKind.Image,
             "audio" => ChatMediaContentKind.Audio,
             "video" => ChatMediaContentKind.Video,
             "document" => ChatMediaContentKind.File,
@@ -1697,6 +1702,30 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         var url = ReadFirstString(item, "url");
         var artifactId = ReadFirstString(item, "artifactId", "artifact_id")
             ?? TryCreateManagedArtifactId(url, kind);
+        string? inlineDataUrl = null;
+        if (isImageBlock && artifactId is null)
+        {
+            var reference = ReadImageBlockReference(item, mimeType)?.Trim();
+            if (reference?.StartsWith(InlineDataUrlScheme, StringComparison.OrdinalIgnoreCase) == true)
+            {
+                // Data URLs never become a fetchable or displayable Url. An unsupported one
+                // still yields an image part so the timeline shows it as unavailable.
+                url = null;
+                if (TryParseInlineImageDataUrl(reference, out var inlineMimeType, out _))
+                {
+                    inlineDataUrl = reference;
+                    mimeType ??= inlineMimeType;
+                }
+            }
+            else
+            {
+                url = reference;
+            }
+        }
+        artifactId ??= TryCreateManagedArtifactId(url, kind);
+        // A Gateway artifact remains the authoritative source when one is available.
+        if (artifactId is not null)
+            inlineDataUrl = null;
 
         media = new ChatMediaContentInfo
         {
@@ -1722,8 +1751,69 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 "transcode" => ChatMediaPlaybackMode.Transcode,
                 _ => null,
             },
+            InlineDataUrl = inlineDataUrl,
         };
         return true;
+    }
+
+    /// <summary>
+    /// Reads the image reference from an image-like block in the shapes the Gateway and
+    /// providers emit: <c>image_url</c> (string or <c>{ url }</c>), <c>url</c>,
+    /// <c>source</c> (string, <c>{ url }</c>, or base64 <c>{ data, media_type }</c>), or
+    /// bare base64 <c>data</c>. Base64 payloads are returned as data URLs.
+    /// </summary>
+    private static string? ReadImageBlockReference(JsonElement item, string? declaredMimeType)
+    {
+        if (item.TryGetProperty("image_url", out var imageUrl) || item.TryGetProperty("imageUrl", out imageUrl))
+        {
+            if (imageUrl.ValueKind == JsonValueKind.String)
+            {
+                var imageUrlText = imageUrl.GetString();
+                if (!string.IsNullOrWhiteSpace(imageUrlText))
+                    return imageUrlText;
+            }
+            if (imageUrl.ValueKind == JsonValueKind.Object && ReadFirstString(imageUrl, "url") is { } nestedUrl)
+                return nestedUrl;
+        }
+
+        if (ReadFirstString(item, "url") is { } url)
+            return url;
+
+        if (item.TryGetProperty("source", out var source))
+        {
+            if (source.ValueKind == JsonValueKind.String)
+            {
+                var sourceText = source.GetString();
+                if (!string.IsNullOrWhiteSpace(sourceText))
+                    return sourceText;
+            }
+            if (source.ValueKind == JsonValueKind.Object)
+            {
+                if (ReadFirstString(source, "url") is { } sourceUrl)
+                    return sourceUrl;
+                if (ReadFirstString(source, "data") is { } sourceData)
+                {
+                    return BuildInlineImageDataUrl(
+                        sourceData,
+                        ReadFirstString(source, "media_type", "mediaType", "mimeType") ?? declaredMimeType);
+                }
+            }
+        }
+
+        return ReadFirstString(item, "data") is { } data
+            ? BuildInlineImageDataUrl(data, ReadFirstString(item, "mediaType", "media_type") ?? declaredMimeType)
+            : null;
+    }
+
+    private static string BuildInlineImageDataUrl(string data, string? mimeType)
+    {
+        var payload = data.Trim();
+        if (payload.StartsWith(InlineDataUrlScheme, StringComparison.OrdinalIgnoreCase))
+            return payload;
+        // Oversized payloads are rejected before a second copy of the base64 text is made.
+        if (payload.Length > MaximumInlineImageDataUrlChars)
+            return InlineDataUrlScheme;
+        return $"{InlineDataUrlScheme}{mimeType?.Trim() ?? DefaultInlineImageMimeType};base64,{payload}";
     }
 
     private static ChatMediaContentKind ClassifyMediaMimeType(
@@ -1860,10 +1950,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         foreach (var propertyName in propertyNames)
         {
             if (value.TryGetProperty(propertyName, out var property)
-                && property.ValueKind == JsonValueKind.String
-                && !string.IsNullOrWhiteSpace(property.GetString()))
+                && property.ValueKind == JsonValueKind.String)
             {
-                return property.GetString();
+                var text = property.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text;
             }
         }
 
@@ -4149,6 +4240,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             case "agent.identity.changed":
                 // Event is an invalidation hint; agents.list plus agent.identity.get are authoritative.
                 ScheduleAgentRosterRefresh(sourceConnectionGeneration);
+                break;
+            case "plugins.changed":
+            case "users.prefs.changed":
+                // Plugin themes and the profile's imported themes may have changed.
+                ThemeCatalogInvalidated?.Invoke(this, eventType!);
                 break;
             case "board.changed":
             case "board.command":

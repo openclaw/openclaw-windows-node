@@ -10,6 +10,7 @@ using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI.Controls;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Theming;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Windows;
@@ -27,6 +28,9 @@ internal sealed class DesktopCompanionPresentation
     public bool IsChatOpen { get; private set; }
     public long Revision { get; private set; }
     public DesktopCompanionInputPrompt? InputPrompt { get; private set; }
+    /// <summary>The bubble's backdrop, fill and stroke for the current Companion appearance.</summary>
+    public PopoverSurface BubbleSurface { get; private set; } =
+        new(Acrylic: true, Fill: null, PopoverSurfacePolicy.AcrylicFillResource, Stroke: null);
     private int _modalDepth;
 
     /// <summary>True while a prompt or chat dialog needs the whole overlay window, not just the mascot.</summary>
@@ -59,6 +63,15 @@ internal sealed class DesktopCompanionPresentation
     {
         if (MascotSize == size) return;
         MascotSize = size;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    // An appearance change is not an arrival: Revision stays, so the mascot does not replay its entrance and
+    // the bubble does not announce its notification again.
+    public void SetBubbleSurface(PopoverSurface surface)
+    {
+        if (BubbleSurface == surface) return;
+        BubbleSurface = surface;
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

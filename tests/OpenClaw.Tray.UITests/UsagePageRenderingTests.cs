@@ -1878,23 +1878,31 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.IsAssignableFrom<IToggleProvider>(peer.GetPattern(PatternInterface.Toggle)).Toggle();
                 flyout.Hide();
             });
+            // A time-zone change clears the report, so the page shows its loading card until the UTC read applies.
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => gateway.Controller.State.Filters.TimeZone == UsageTimeZoneMode.Utc, "UTC day boundaries"));
+                () => gateway.Controller.State is { Phase: UsageLoadPhase.Loaded, Dashboard: not null } state
+                    && state.Filters.TimeZone == UsageTimeZoneMode.Utc
+                    && Find<FrameworkElement>(host, "UsageLoading") is null
+                    && Find<SelectorBar>(host, "UsageChartView") is { ActualHeight: > 0 },
+                "UTC day boundaries and the reloaded chart",
+                () => $"phase={gateway.Controller.State.Phase}; zone={gateway.Controller.State.Filters.TimeZone}; " +
+                    (Find<TextBlock>(host, "UsageRenderError")?.Text ?? "No render error.")));
             await ui.RunOnUIAsync(() =>
             {
                 var view = Get<SelectorBar>(host, "UsageChartView");
                 view.SelectedItem = view.Items[1];
             });
             await WaitForAsync(host, "UsageDailyTable");
+            await WaitForAsync(host, "UsageInspectProvider_anthropic");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Null(Find<FrameworkElement>(host, "UsageDailyChart"));
                 Invoke(Get<Button>(host, "UsageInspectProvider_anthropic"));
             });
             await WaitForAsync(host, "UsageContributor_Provider_anthropic");
+            await WaitForAsync(host, "UsageContributorSession_agent:research:discord:42");
             await ui.RunOnUIAsync(() =>
             {
-                Assert.NotNull(Find<FrameworkElement>(host, "UsageContributorSession_agent:research:discord:42"));
                 var kinds = Get<SelectorBar>(host, "UsageContributorsKind");
                 kinds.SelectedItem = kinds.Items[0];
             });

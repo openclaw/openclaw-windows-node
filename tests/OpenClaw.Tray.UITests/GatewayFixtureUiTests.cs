@@ -23,6 +23,10 @@ public sealed class GatewayFixtureUiFactAttribute : FactAttribute
 [Collection("Gateway fixture UI")]
 public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
+    private static readonly TimeSpan SettingsWindowTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_SETTINGS_WINDOW_TIMEOUT_SECONDS"), out var windowSeconds)
+            && windowSeconds > 0 ? TimeSpan.FromSeconds(windowSeconds) : TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan SettingsWindowPollInterval = TimeSpan.FromMilliseconds(100);
     private const string HandoffSettleTimeoutVariable = "OPENCLAW_GATEWAY_FIXTURE_HANDOFF_TIMEOUT_SECONDS";
     // Sender process, app relaunch, verify RPC and receipt persistence; hosted runners exceeded 20 s.
     private static readonly TimeSpan HandoffSettleTimeout =
@@ -452,7 +456,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await TriggerReadOnlySessionErrorAsync(run);
             await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback")?.Current.IsOffscreen == false,
                 "visible rejected-operation feedback above embedded content");
-            Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Current.Name);
+            Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Cached.Name);
             await CaptureIfRequestedAsync(run, "pin-operation-error-visible.png");
 
             await run.InvokeAsync("app.navigate", new { page = "settings" });
@@ -601,7 +605,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 await TriggerReadOnlySessionErrorAsync(run);
                 await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false },
                     "explicit rejected operation on pinned Systems");
-                Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Current.Name);
+                Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Cached.Name);
                 Invoke(AssertToggleHit("WorkspaceTogglePane"));
                 await WaitUiAsync(run, () => FindById(run, "WorkspaceReopenPane") is { Current.IsOffscreen: false } &&
                     FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false },
@@ -821,6 +825,29 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsOffscreen == false, "retained chat");
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!
                 .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task PinnedPages_CustomizeWhilePickerClosesReopensPicker()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            // Reuse the live button so the reopen reaches the app before choosing a page has finished closing the picker.
+            var customize = await WaitForElementByIdAsync(run, "WorkspacePagesCustomize", "customization button");
+            Invoke(customize);
+            var firstConnection = await WaitForElementByIdAsync(run, "WorkspacePagesToggle:connection", "Connection pin toggle");
+            var firstConnectionId = firstConnection.GetRuntimeId();
+            Invoke(firstConnection);
+            Invoke(customize);
+            await WaitForElementByIdAsync(run, "WorkspacePagesToggle:sessions", "picker reopened after its previous close");
+            // Opening rebuilds the picker items, so a new element proves a reopen rather than the first picker.
+            var connection = await WaitForElementByIdAsync(run, "WorkspacePagesToggle:connection", "reopened Connection toggle");
+            Assert.NotEqual(firstConnectionId, connection.GetRuntimeId());
+            Assert.Equal(ToggleState.On, ((TogglePattern)connection.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
+            Assert.NotNull(FindById(run, "WorkspacePinnedPage:connection"));
         });
     }
 
@@ -1751,9 +1778,9 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                     output.WriteLine(JsonSerializer.Serialize(new
                     {
                         width = name,
-                        viewport = timeline?.Current.BoundingRectangle.ToString(),
-                        messageBounds = message?.Current.BoundingRectangle.ToString(),
-                        messageOffscreen = message?.Current.IsOffscreen,
+                        viewport = timeline?.Cached.BoundingRectangle.ToString(),
+                        messageBounds = message?.Cached.BoundingRectangle.ToString(),
+                        messageOffscreen = message?.Cached.IsOffscreen,
                         window = window.Current.BoundingRectangle.ToString(),
                     }));
                     throw;
@@ -2308,28 +2335,143 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
             new PropertyCondition(AutomationElement.NameProperty, name)));
 
-    private static AutomationElement? FindButtonContaining(GatewayFixtureRun run, string text)
+    private static AutomationElement? FindButtonContaining(GatewayFixtureRun run, string text) =>
+        FindFirstSnapshotMatch(run, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+            element => element.Cached.Name.Contains(text, StringComparison.OrdinalIgnoreCase));
+
+    // Returns an element whose Name, IsOffscreen and BoundingRectangle are cached by the lookup.
+    private static AutomationElement? FindText(GatewayFixtureRun run, string text) =>
+        FindFirstSnapshotMatch(run, TextCondition, element => element.Cached.Name.Contains(text, StringComparison.Ordinal));
+
+    private static readonly Condition TextCondition =
+        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text);
+
+    private static readonly Condition TimelineCondition =
+        new PropertyCondition(AutomationElement.NameProperty, "Chat messages");
+
+    // Session switches and virtualization remove nodes at any time. Snapshot lookups fetch the
+    // properties they read in the FindAll/FindFirst response (.Cached), so removing a node after the
+    // lookup cannot fail a later read. A node or scope torn down while UIA builds the response makes
+    // that observation incomplete. A match among readable nodes is valid, but a lookup reports
+    // "absent" or "not visible" only from a complete observation.
+    private const int UiaTornDownHResult = unchecked((int)0x8000FFFF);
+    // Cached error markers can carry UIA_E_ELEMENTNOTAVAILABLE as a raw COMException.
+    private const int UiaElementNotAvailableHResult = unchecked((int)0x80040201);
+
+    private static readonly TimeSpan CompleteSnapshotTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_UIA_COMPLETE_SNAPSHOT_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan CompleteSnapshotRetryInterval = TimeSpan.FromMilliseconds(50);
+
+    private static bool IsTornDown(Exception error) => error is ElementNotAvailableException
+        || error is COMException { HResult: UiaTornDownHResult or UiaElementNotAvailableHResult };
+
+    private static IDisposable ActivateSnapshot()
     {
-        foreach (var window in AppWindows(run))
-        foreach (AutomationElement element in window.FindAll(TreeScope.Descendants,
-                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
-            if (element.Current.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
-                return element;
-        return null;
+        var request = new CacheRequest();
+        request.Add(AutomationElement.NameProperty);
+        request.Add(AutomationElement.IsOffscreenProperty);
+        request.Add(AutomationElement.BoundingRectangleProperty);
+        return request.Activate();
     }
 
-    private static AutomationElement? FindText(GatewayFixtureRun run, string text)
+    private static bool IsSnapshotReadable(AutomationElement element)
     {
-        foreach (var window in AppWindows(run))
+        try
         {
-            var matches = window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text));
-            foreach (AutomationElement element in matches)
-                if (element.Current.Name.Contains(text, StringComparison.Ordinal))
-                    return element;
+            _ = element.Cached.Name;
+            _ = element.Cached.IsOffscreen;
+            _ = element.Cached.BoundingRectangle;
+            return true;
         }
-        return null;
+        catch (Exception error) when (IsTornDown(error)) { return false; }
     }
+
+    // The only retry owner: re-observes until an observation is complete or has a match. If the tree
+    // never settles, it throws ElementNotAvailableException, which WaitUiAsync polls treat as "not yet".
+    private static T ObserveComplete<T>(Func<(T Result, bool Complete)> observe, Func<T, bool> isMatch)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            var (result, complete) = observe();
+            if (complete || isMatch(result))
+                return result;
+            if (elapsed.Elapsed >= CompleteSnapshotTimeout)
+                throw new ElementNotAvailableException(
+                    "UI Automation could not read every candidate element, so absence was not established.");
+            Thread.Sleep(CompleteSnapshotRetryInterval); // test-timing-exception: paces re-reads of a bounded wait for a complete UIA snapshot
+        }
+    }
+
+    // One budget-free read. Every observation below is built from these and never retries itself.
+    private static (AutomationElement[] Elements, bool Complete) ReadSnapshot(
+        AutomationElement scope, TreeScope treeScope, Condition condition)
+    {
+        AutomationElement[] all;
+        try
+        {
+            using (ActivateSnapshot())
+                all = scope.FindAll(treeScope, condition).Cast<AutomationElement>().ToArray();
+        }
+        catch (Exception error) when (IsTornDown(error)) { return ([], false); }
+        var readable = all.Where(IsSnapshotReadable).ToArray();
+        return (readable, readable.Length == all.Length);
+    }
+
+    private static (AutomationElement[] Windows, bool Complete) ObserveWindows(GatewayFixtureRun run)
+    {
+        run.EnsureRunning();
+        var (windows, complete) = ReadSnapshot(AutomationElement.RootElement, TreeScope.Children,
+            new PropertyCondition(AutomationElement.ProcessIdProperty, run.AppProcessId));
+        return (windows.Where(window => !window.Cached.IsOffscreen).ToArray(), complete);
+    }
+
+    private static (AutomationElement[] Elements, bool Complete) ObserveInApp(GatewayFixtureRun run, Condition condition)
+    {
+        var (windows, complete) = ObserveWindows(run);
+        var elements = new List<AutomationElement>();
+        foreach (var window in windows)
+        {
+            var (found, windowComplete) = ReadSnapshot(window, TreeScope.Descendants, condition);
+            elements.AddRange(found);
+            complete &= windowComplete;
+        }
+        return (elements.ToArray(), complete);
+    }
+
+    private static (AutomationElement? Timeline, bool Complete) ObserveTimeline(GatewayFixtureRun run)
+    {
+        var (windows, complete) = ObserveWindows(run);
+        foreach (var window in windows)
+        {
+            AutomationElement? timeline;
+            try
+            {
+                using (ActivateSnapshot())
+                    timeline = window.FindFirst(TreeScope.Descendants, TimelineCondition);
+            }
+            catch (Exception error) when (IsTornDown(error)) { complete = false; continue; }
+            if (timeline is null) continue;
+            if (IsSnapshotReadable(timeline)) return (timeline, true);
+            complete = false;
+        }
+        return (null, complete);
+    }
+
+    private static AutomationElement? FindFirstSnapshotMatch(GatewayFixtureRun run, Condition condition,
+        Func<AutomationElement, bool> isMatch) => ObserveComplete(() =>
+        {
+            var (elements, complete) = ObserveInApp(run, condition);
+            return (elements.FirstOrDefault(isMatch), complete);
+        }, match => match is not null);
+
+    private static AutomationElement[] FindTimelineTexts(GatewayFixtureRun run) => ObserveComplete(() =>
+    {
+        var (timeline, timelineComplete) = ObserveTimeline(run);
+        return timeline is null ? ([], timelineComplete) : ReadSnapshot(timeline, TreeScope.Descendants, TextCondition);
+    }, _ => false);
 
     private static AutomationElement? FindInApp(GatewayFixtureRun run, Condition condition, SessionSelectionProbe? probe = null)
     {
@@ -2344,13 +2486,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     private static IEnumerable<AutomationElement> AppWindows(GatewayFixtureRun run, SessionSelectionProbe? probe = null)
     {
-        if (probe is null) run.EnsureRunning();
-        else probe.Run("owned-app-check", run.EnsureRunning);
-        AutomationElementCollection ReadWindows() => AutomationElement.RootElement.FindAll(TreeScope.Children,
-            new PropertyCondition(AutomationElement.ProcessIdProperty, run.AppProcessId));
-        var windows = probe is null ? ReadWindows() : probe.Read("owned-window-enumeration", ReadWindows);
-        return windows.Cast<AutomationElement>().Where(window => !(probe is null ? window.Current.IsOffscreen
-            : probe.Read("owned-window-offscreen", () => window.Current.IsOffscreen)));
+        AutomationElement[] Read() => ObserveComplete(() => ObserveWindows(run), _ => false);
+        if (probe is null) return Read();
+        probe.Run("owned-app-check", run.EnsureRunning);
+        return probe.Read("owned-window-enumeration", Read);
     }
 
     private static AutomationElement FindHub(GatewayFixtureRun run) =>
@@ -2369,32 +2508,43 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerInput")) is not null;
 
     private static AutomationElement? FindTimeline(GatewayFixtureRun run) =>
-        FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Chat messages"));
+        ObserveComplete(() => ObserveTimeline(run), timeline => timeline is not null);
 
+    // Visibility is part of the match, so "not visible" needs a complete observation of every
+    // matching node. The observation reports the visible match, else the first name match.
     private static bool IsVisibleInTimeline(GatewayFixtureRun run, string text,
         VoiceTailNativeObservation? observation = null)
     {
-        var timeline = FindTimeline(run);
-        var message = FindText(run, text);
+        var (timeline, message, visible) = ObserveComplete(() =>
+        {
+            var (observedTimeline, timelineComplete) = ObserveTimeline(run);
+            var (texts, textsComplete) = ObserveInApp(run, TextCondition);
+            var matches = texts.Where(element => element.Cached.Name.Contains(text, StringComparison.Ordinal)).ToArray();
+            var shown = observedTimeline is null ? null
+                : matches.FirstOrDefault(element => IsVisibleInTimeline(observedTimeline, element));
+            return ((Timeline: observedTimeline, Message: shown ?? matches.FirstOrDefault(), Visible: shown is not null),
+                timelineComplete && textsComplete);
+        }, result => result.Visible);
         if (observation is not null)
         {
             observation.TimelinePresent = timeline is not null;
             observation.FinalElementPresent = message is not null;
+            if (timeline is not null && message is not null)
+                IsVisibleInTimeline(timeline, message, observation);
+            observation.FinalVisible = visible;
         }
-        var visible = timeline is not null && message is not null && IsVisibleInTimeline(timeline, message, observation);
-        if (observation is not null) observation.FinalVisible = visible;
         return visible;
     }
-
+    // Both elements must come from snapshot lookups (FindTimeline, FindText, ReadSnapshot).
     private static bool IsVisibleInTimeline(AutomationElement timeline, AutomationElement message,
         VoiceTailNativeObservation? observation = null)
     {
-        var offscreen = message.Current.IsOffscreen;
+        var offscreen = message.Cached.IsOffscreen;
         if (observation is not null) observation.FinalOffscreen = offscreen;
         if (offscreen)
             return false;
-        var viewport = timeline.Current.BoundingRectangle;
-        var bounds = message.Current.BoundingRectangle;
+        var viewport = timeline.Cached.BoundingRectangle;
+        var bounds = message.Cached.BoundingRectangle;
         if (observation is not null)
         {
             observation.FinalHasPositiveBounds = !bounds.IsEmpty && bounds.Width > 0 && bounds.Height > 0;
@@ -2557,10 +2707,38 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         OwnedWindowCapture.Save(run, SettingsWindow(run), name);
     }
 
-    private static AutomationElement SettingsWindow(GatewayFixtureRun run) =>
-        AppWindows(run).Single(candidate =>
+    private static AutomationElement? FindSettingsWindow(GatewayFixtureRun run)
+    {
+        var matches = AppWindows(run).Where(candidate =>
             candidate.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsPageMarker")) is not null);
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsPageMarker")) is not null).ToArray();
+        return matches.Length switch
+        {
+            0 => null,
+            1 => matches[0],
+            _ => throw new InvalidOperationException("Multiple owned windows contain SessionsPageMarker.")
+        };
+    }
+
+    private static AutomationElement SettingsWindow(GatewayFixtureRun run)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (watch.Elapsed < SettingsWindowTimeout)
+        {
+            try
+            {
+                if (FindSettingsWindow(run) is { } window)
+                    return window;
+            }
+            catch (ElementNotAvailableException)
+            {
+                // A relayout can remove a peer while its descendants are being enumerated.
+            }
+            Thread.Sleep(SettingsWindowPollInterval); // test-timing-exception: Poll synchronous UIA acquisition, not a layout settle.
+        }
+        throw new TimeoutException(
+            $"Timed out waiting for the owned Sessions window. Artifacts: {run.ArtifactsDirectory}");
+    }
 
     private static int ChatWindowCount(GatewayFixtureRun run) =>
         AppWindows(run).Count(window =>
