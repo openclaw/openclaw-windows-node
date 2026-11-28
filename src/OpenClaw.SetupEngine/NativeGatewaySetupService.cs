@@ -17,6 +17,14 @@ public interface INativeGatewaySetupHost
 
     void ReportHandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation) { }
 
+    /// <summary>
+    /// Shares the signed-in user's Claude Code and its sign-in with the isolated Gateway's agent account.
+    /// Hosts without that ability share nothing.
+    /// </summary>
+    Task<ClaudeCliShareResult> ShareClaudeCliAsync(
+        NativeGatewayPackage package, CancellationToken cancellationToken) =>
+        Task.FromResult(ClaudeCliShareResult.NotAvailable);
+
     Task<NativeGatewayContract> DetectContractAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken);
 

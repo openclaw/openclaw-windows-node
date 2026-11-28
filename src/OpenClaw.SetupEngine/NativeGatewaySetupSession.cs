@@ -86,6 +86,18 @@ public sealed class NativeGatewaySetupSession(
         _terminal = host.OpenRecoveryTerminal(package, environment);
     }
 
+    /// <summary>
+    /// Shares the signed-in user's Claude Code with an isolated Gateway before a Claude CLI setup choice
+    /// starts. A Gateway that runs as the user already sees that install, so nothing is shared there.
+    /// </summary>
+    public Task<ClaudeCliShareResult> ShareClaudeCliAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return IsIsolated
+            ? host.ShareClaudeCliAsync(package, cancellationToken)
+            : Task.FromResult(ClaudeCliShareResult.NotAvailable);
+    }
+
     public Task PrepareWizardAsync(CancellationToken cancellationToken) => PrepareConnectionAsync(cancellationToken);
 
     public async Task PrepareConnectionAsync(CancellationToken cancellationToken)

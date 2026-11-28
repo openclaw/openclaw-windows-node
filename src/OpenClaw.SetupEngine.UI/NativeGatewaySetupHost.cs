@@ -40,6 +40,12 @@ internal sealed class NativeGatewaySetupHost(
             new Dictionary<string, string>(), CliCommandTimeout,
             "Applying Windows node capabilities inside the isolated Gateway...", cancellationToken);
 
+    public Task<ClaudeCliShareResult> ShareClaudeCliAsync(
+        NativeGatewayPackage package, CancellationToken cancellationToken) =>
+        new ClaudeCliAgentBridge((arguments, ct) => RunAsync(package.ClawCtlAliasPath, arguments,
+            new Dictionary<string, string>(), CliCommandTimeout,
+            "Sharing Claude Code with the isolated Gateway...", ct)).ShareAsync(cancellationToken);
+
     /// <summary>Runs the package's redacted <c>clawctl collect-logs</c> for setup recovery.</summary>
     public Task<NativeGatewayDiagnosticsBundle> CollectDiagnosticsAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken) =>
