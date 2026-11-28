@@ -191,9 +191,9 @@ internal sealed class ChatHistoryState
         return oldSessionId;
     }
 
-    internal IReadOnlyList<(string ThreadId, string PreviousSessionId)> SeedSessionIds(IEnumerable<SessionInfo> sessions)
+    internal IReadOnlyList<(string ThreadId, string PreviousSessionId, string SessionId)> SeedSessionIds(IEnumerable<SessionInfo> sessions)
     {
-        List<(string ThreadId, string PreviousSessionId)>? replaced = null;
+        List<(string ThreadId, string PreviousSessionId, string SessionId)>? replaced = null;
         foreach (var session in sessions)
         {
             if (string.IsNullOrWhiteSpace(session.Key) ||
@@ -216,7 +216,7 @@ internal sealed class ChatHistoryState
             if (_sessionIds.TryGetValue(session.Key, out var previous) && previous != session.SessionId)
             {
                 InvalidateHistory(session.Key);
-                (replaced ??= []).Add((session.Key, previous));
+                (replaced ??= []).Add((session.Key, previous, session.SessionId));
             }
             _sessionIds[session.Key] = session.SessionId;
             _resetClearedSessionIds.Remove(session.Key);
@@ -300,6 +300,9 @@ internal sealed class ChatHistoryState
             StringComparer.Ordinal);
         if (prior.Entries.Count == 0 && !prior.TurnActive && prior.TurnStartedAt is null && prior.RunUsage is null)
             return (rebuilt, rebuiltMetadata);
+        var hasEarlierHistory = plan.OlderCursor is not null || plan.OlderMessageId is not null;
+        if (hasEarlierHistory && prior.Entries.Count > 0)
+            (rebuilt, rebuiltMetadata) = PreserveWindowEntryIds(rebuilt, rebuiltMetadata, prior, priorMetadata);
 
         static string ContentKey(ChatTimelineItemKind kind, string text) =>
             $"{kind}|{text}";
@@ -405,7 +408,6 @@ internal sealed class ChatHistoryState
         var entries = rebuilt.Entries.ToBuilder();
         var oldestHistorySequence = rebuiltMetadata.Values.Select(metadata => metadata.OpenClawSeq)
             .Where(sequence => sequence > 0).Min();
-        var hasEarlierHistory = plan.OlderCursor is not null || plan.OlderMessageId is not null;
         var retainedOlderRows = new List<ChatTimelineItem>();
         var remappedEntryIds = new Dictionary<string, string>(StringComparer.Ordinal);
         var retainedPreambles = new HashSet<string>(StringComparer.Ordinal);
@@ -647,6 +649,65 @@ internal sealed class ChatHistoryState
         merged = ChatTimelineReducer.RebuildActiveToolTracking(merged);
         merged = ChatReasoningPresentation.Reconcile(merged, rebuiltMetadata);
         return (merged, rebuiltMetadata);
+    }
+
+    // Reactor's keyed ItemsView and native scroll anchor must still identify the same message
+    // after a latest-page refresh changes the temporary IDs assigned by the history reducer.
+    private static (ChatTimelineState Timeline, Dictionary<string, ChatEntryMetadata> Metadata) PreserveWindowEntryIds(
+        ChatTimelineState rebuilt,
+        IReadOnlyDictionary<string, ChatEntryMetadata> metadata,
+        ChatTimelineState prior,
+        IReadOnlyDictionary<string, ChatEntryMetadata> priorMetadata)
+    {
+        static IEnumerable<IGrouping<(string Id, int? Sequence, ChatTimelineItemKind Kind, string? Part), ChatTimelineItem>> PersistedRows(
+            ChatTimelineState timeline, IReadOnlyDictionary<string, ChatEntryMetadata> details) =>
+            timeline.Entries
+                .Where(entry => details.GetValueOrDefault(entry.Id)?.GatewayMessageId is { Length: > 0 })
+                .GroupBy(entry => (details[entry.Id].GatewayMessageId!, details[entry.Id].OpenClawSeq, entry.Kind,
+                    entry.ToolCallId ?? entry.Presentation?.BlockId ?? entry.Presentation?.StreamItemId));
+
+        var oldRows = PersistedRows(prior, priorMetadata).ToDictionary(group => group.Key, group => group.ToArray());
+        var ids = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var group in PersistedRows(rebuilt, metadata))
+        {
+            if (!oldRows.TryGetValue(group.Key, out var previous))
+                continue;
+            var current = group.ToArray();
+            if (previous.Length != current.Length)
+                continue;
+            for (var i = 0; i < current.Length; i++)
+                ids.Add(current[i].Id, previous[i].Id);
+        }
+
+        // Never give a different row a key that a mounted reader could still be anchoring.
+        var reserved = prior.Entries.Select(entry => entry.Id).ToHashSet(StringComparer.Ordinal);
+        var entries = rebuilt.Entries.ToBuilder();
+        var nextId = Math.Max(prior.NextId, rebuilt.NextId);
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (!ids.TryGetValue(entry.Id, out var id))
+            {
+                id = entry.Id;
+                while (!reserved.Add(id))
+                    id = $"e{nextId++}";
+                ids.Add(entry.Id, id);
+            }
+            if (id != entry.Id)
+                entries[i] = entry with { Id = id };
+        }
+
+        string? Remap(string? id) => id is null ? null : ids.GetValueOrDefault(id, id);
+        return (rebuilt with
+        {
+            Entries = entries.ToImmutable(),
+            NextId = nextId,
+            ActiveAssistantId = Remap(rebuilt.ActiveAssistantId),
+            ActiveReasoningId = Remap(rebuilt.ActiveReasoningId),
+            ActiveToolCallId = Remap(rebuilt.ActiveToolCallId),
+            ReconcilableAssistantId = Remap(rebuilt.ReconcilableAssistantId),
+        }, metadata.Where(pair => ids.ContainsKey(pair.Key))
+            .ToDictionary(pair => ids[pair.Key], pair => pair.Value, StringComparer.Ordinal));
     }
 
     internal static bool ShouldPreserveLiveEntryDuringAuthoritativeReload(

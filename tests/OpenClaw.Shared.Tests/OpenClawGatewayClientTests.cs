@@ -51,7 +51,6 @@ public class OpenClawGatewayClientTests
         var terminal = Assert.IsType<ChatHistoryTerminalRun>(history.TerminalRun);
         Assert.Equal("r", terminal.RunId);
         Assert.False(terminal.HasNoQueuedInputs);
-        Assert.Null(history.RetainedInputs);
     }
 
     [Fact]

@@ -2214,12 +2214,7 @@ public class ChatHistoryInfo
     /// </summary>
     public ChatInFlightRunInfo? InFlightRun { get; set; }
     public ChatHistoryTerminalRun? TerminalRun { get; set; }
-    public ChatRetainedInputPage? RetainedInputs { get; set; }
-    public string? ActiveLeafEntryId { get; set; }
 }
-
-/// <summary>A validated page containing only cancelled or interrupted inputs.</summary>
-public sealed record ChatRetainedInputPage(int Total, IReadOnlyList<string> Ids, long? NextBefore);
 
 /// <summary>Explicit same-session idle run observation from a history response, not a cached session row.</summary>
 public sealed record ChatHistoryTerminalRun(string RunId, string State, string? ErrorMessage = null,

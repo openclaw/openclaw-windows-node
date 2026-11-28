@@ -423,11 +423,7 @@ public sealed class InteractiveGatewayChatTests
     {
         IdleListBeforeSavedReply,
         QuotedReplyInvalidation,
-        RetainedCancelledInputsAcrossElevenPages,
-        QueuedInputOnOlderPage,
-        ChangedPendingPage,
-        MissingPendingPage,
-        PendingPageForDifferentKey,
+        LegacyPartialQueueDoesNotProveIdle,
         NewerPromptOnlyInHistory,
         QueueMovesBetweenPendingPages,
         QueueWideEmptyObservation,
@@ -437,11 +433,7 @@ public sealed class InteractiveGatewayChatTests
     [Theory]
     [InlineData(ExternalTranscriptRecovery.IdleListBeforeSavedReply)]
     [InlineData(ExternalTranscriptRecovery.QuotedReplyInvalidation)]
-    [InlineData(ExternalTranscriptRecovery.RetainedCancelledInputsAcrossElevenPages)]
-    [InlineData(ExternalTranscriptRecovery.QueuedInputOnOlderPage)]
-    [InlineData(ExternalTranscriptRecovery.ChangedPendingPage)]
-    [InlineData(ExternalTranscriptRecovery.MissingPendingPage)]
-    [InlineData(ExternalTranscriptRecovery.PendingPageForDifferentKey)]
+    [InlineData(ExternalTranscriptRecovery.LegacyPartialQueueDoesNotProveIdle)]
     [InlineData(ExternalTranscriptRecovery.NewerPromptOnlyInHistory)]
     [InlineData(ExternalTranscriptRecovery.QueueMovesBetweenPendingPages)]
     [InlineData(ExternalTranscriptRecovery.QueueWideEmptyObservation)]
@@ -462,7 +454,7 @@ public sealed class InteractiveGatewayChatTests
         };
         var paged = scenario is not (ExternalTranscriptRecovery.IdleListBeforeSavedReply or
             ExternalTranscriptRecovery.QuotedReplyInvalidation or ExternalTranscriptRecovery.NewerPromptOnlyInHistory);
-        var pendingTotal = scenario == ExternalTranscriptRecovery.RetainedCancelledInputsAcrossElevenPages ? 201 : paged ? 21 : 0;
+        var pendingTotal = scenario == ExternalTranscriptRecovery.QueueWideEmptyObservation ? 201 : paged ? 21 : 0;
         using var temp = new TempDirectory();
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: tracked), token);
@@ -517,27 +509,18 @@ public sealed class InteractiveGatewayChatTests
         {
             long? before = parameters.TryGetProperty("pendingBefore", out var cursor) ? cursor.GetInt64() : null;
             cursors.Enqueue(before);
-            if (before is not null && parameters.TryGetProperty("sessionId", out _))
-                throw new InvalidOperationException("sessionId requires messageId");
-            var newest = before is null ? pendingTotal : checked((int)before.Value - 1);
-            var oldest = Math.Max(1, newest - 19);
-            var items = Enumerable.Range(oldest, newest - oldest + 1).Select(i => new
-            {
-                id = $"pending-{i}",
-                state = i == 1 && scenario == ExternalTranscriptRecovery.QueuedInputOnOlderPage ? "queued" : "cancelled",
-            }).ToArray();
-            var total = before is not null && scenario == ExternalTranscriptRecovery.ChangedPendingPage ? pendingTotal + 1 : pendingTotal;
+            var total = pendingTotal;
+            var oldest = Math.Max(1, total - 19);
+            var items = Enumerable.Range(oldest, total - oldest + 1).Select(i => new { id = $"pending-{i}", state = "cancelled" }).ToArray();
             var nextBefore = oldest > 1 ? (long?)oldest : null;
             object pendingInputs = hasQueuedInput is { } observed
                 ? new { items, total, nextBefore, queuedCount = 0, hasQueuedInput = observed }
                 : new { items, total, nextBefore, queuedCount = 0 };
             return new
             {
-                sessionKey = before is not null && scenario == ExternalTranscriptRecovery.PendingPageForDifferentKey
-                    ? "agent:main:elsewhere" : key,
-                sessionId, messages = historyMessages,
+                sessionKey = key, sessionId, messages = historyMessages,
                 sessionInfo = new { sessionId, lastRunId = run, hasActiveRun = false, status = "done", activeRunIds = Array.Empty<string>() },
-                pendingInputs = before is not null && scenario == ExternalTranscriptRecovery.MissingPendingPage ? null : pendingInputs,
+                pendingInputs,
             };
         });
         if (tracked)
@@ -579,17 +562,10 @@ public sealed class InteractiveGatewayChatTests
                 await server.WaitForRequestAsync("chat.send", key, occurrence: 2, cancellationToken: drainTimeout.Token);
                 Assert.Equal(new long?[] { null }, cursors);
             }
-            else if (hasQueuedInput is { } observed)
-            {
-                Assert.Equal(observed, timeline.TurnActive);
-                Assert.Equal(new long?[] { null }, cursors);
-            }
             else
             {
-                Assert.Equal(Enumerable.Range(1, (pendingTotal - 1) / 20)
-                    .Select(page => (long?)(pendingTotal - page * 20 + 1)).Prepend(null), cursors);
-                Assert.Equal(scenario != ExternalTranscriptRecovery.RetainedCancelledInputsAcrossElevenPages,
-                    timeline.TurnActive);
+                Assert.Equal(scenario != ExternalTranscriptRecovery.QueueWideEmptyObservation, timeline.TurnActive);
+                Assert.Equal(new long?[] { null }, cursors);
             }
         }
         else
@@ -689,7 +665,115 @@ public sealed class InteractiveGatewayChatTests
         var refreshed = Latest(snapshots, key)!;
         Assert.Equal(prefix.Select(row => row.Text).Concat(Enumerable.Range(3, 200).Select(Text)),
             refreshed.Entries.Select(row => row.Text));
+        Assert.Equal(Assert.Single(original, row => row.Text == Text(100)).Id,
+            Assert.Single(refreshed.Entries, row => row.Text == Text(100)).Id);
         Assert.False(refreshed.TurnActive);
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PhysicalSessionAcknowledgment_PreservesNewTranscriptPromptAndClockBeforeRoster(bool replyBeforeRoster)
+    {
+        const string key = GatewayScenario.EmptySessionKey;
+        const string beforeId = "physical-before";
+        const string afterId = "physical-after";
+        const string prompt = "New external prompt";
+        const string replyText = "New quoted reply";
+        const string runId = "replacement-run";
+        var announcedId = beforeId;
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        server.OverrideSessionListRead(_ => new { sessions = new[] { new { key, sessionId = Volatile.Read(ref announcedId) } } });
+        server.OverrideChatRead("chat.history", _ => new
+        {
+            sessionKey = key, sessionId = beforeId, messages = new[]
+            {
+                new { role = "user", content = "Old prompt", __openclaw = new { id = "before-prompt", seq = 1 } },
+                new { role = "assistant", content = "Old reply", __openclaw = new { id = "before-reply", seq = 2 } },
+            },
+        });
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var before = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var after = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var lateRoster = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var expectLateRoster = 0;
+        var newTurn = new TaskCompletionSource<ChatTimelineState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource<ChatTimelineState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, _) =>
+        {
+            if (provider.GetSessionId(key) == beforeId)
+            {
+                before.TrySetResult();
+                if (Volatile.Read(ref expectLateRoster) == 1) lateRoster.TrySetResult();
+            }
+            if (provider.GetSessionId(key) == afterId) after.TrySetResult();
+        };
+        provider.Changed += (_, update) =>
+        {
+            if (update.Snapshot.Timelines.GetValueOrDefault(key) is not { } timeline) return;
+            if (timeline.TurnActive && timeline.Entries.Any(row => row.Text == prompt)) newTurn.TrySetResult(timeline);
+            if (!timeline.TurnActive && timeline.Entries.Any(row => row.Text == replyText)) completed.TrySetResult(timeline);
+        };
+        await client.ConnectAsync();
+        await before.Task.WaitAsync(HistoryMergeTimeout);
+        await provider.LoadHistoryAsync(key).WaitAsync(HistoryMergeTimeout);
+        Assert.Contains((await provider.LoadAsync()).Timelines[key].Entries, row => row.Text == "Old reply");
+        var savedPrompt = new { role = "user", content = prompt, timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            __openclaw = new { id = "replacement-prompt", seq = 1 } };
+        await server.PublishTranscriptEventAsync("session.message", new
+        {
+            sessionKey = key, sessionId = afterId, status = "running", hasActiveRun = true, message = savedPrompt,
+        });
+        var started = await newTurn.Task.WaitAsync(HistoryMergeTimeout);
+        Assert.NotNull(started.TurnStartedAt);
+        await provider.LoadHistoryAsync(key, force: true, authoritative: true).WaitAsync(HistoryMergeTimeout);
+        Assert.Equal(started.TurnStartedAt, (await provider.LoadAsync()).Timelines[key].TurnStartedAt);
+
+        object[] savedMessages = replyBeforeRoster ? [savedPrompt, new { role = "assistant", content = replyText,
+            replyToId = "replacement-prompt", __openclaw = new { id = "replacement-reply", seq = 2, runId } }] : [savedPrompt];
+        server.OverrideChatRead("chat.history", _ => new
+        {
+            sessionKey = key, sessionId = afterId, messages = savedMessages,
+            sessionInfo = new { sessionId = afterId, lastRunId = runId,
+                status = replyBeforeRoster ? "done" : "running", hasActiveRun = !replyBeforeRoster },
+            pendingInputs = new { total = 0, items = Array.Empty<object>() },
+        });
+        if (replyBeforeRoster)
+        {
+            await server.PublishTranscriptEventAsync("sessions.changed", new
+            {
+                sessionKey = key, sessionId = afterId, phase = "message", status = "done", hasActiveRun = false, lastRunId = runId,
+            });
+            await provider.LoadHistoryAsync(key, force: true).WaitAsync(HistoryMergeTimeout);
+            Volatile.Write(ref expectLateRoster, 1);
+            await server.NotifySessionsChangedAsync();
+            await lateRoster.Task.WaitAsync(HistoryMergeTimeout);
+            Assert.True((await provider.LoadAsync()).Timelines[key].TurnActive);
+        }
+
+        Volatile.Write(ref announcedId, afterId);
+        await server.NotifySessionsChangedAsync();
+        await after.Task.WaitAsync(HistoryMergeTimeout);
+        if (replyBeforeRoster)
+        {
+            var settled = await completed.Task.WaitAsync(HistoryMergeTimeout);
+            Assert.Equal(new[] { prompt, replyText }, settled.Entries.Select(row => row.Text));
+        }
+        else
+        {
+            var current = (await provider.LoadAsync()).Timelines[key];
+            Assert.Equal(prompt, Assert.Single(current.Entries).Text);
+            Assert.True(current.TurnActive);
+            Assert.Equal(started.TurnStartedAt, current.TurnStartedAt);
+            Assert.Equal(started.TurnGeneration, current.TurnGeneration);
+        }
         await client.DisconnectAsync();
     }
 

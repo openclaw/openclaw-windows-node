@@ -21,7 +21,8 @@ internal sealed record ChatStatusTransition(
 
 internal sealed record ChatSessionsTransition(
     ChatDataSnapshot Snapshot,
-    string[] QueuedThreadsToDrain);
+    string[] QueuedThreadsToDrain,
+    ChatHistoryCommitToken[] CarriedPromptReads);
 
 internal sealed record ChatResetTransition(
     ChatDataSnapshot Snapshot,

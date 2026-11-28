@@ -901,6 +901,129 @@ public sealed partial class ReactorChatLayoutProofTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task NewestHistoryWindow_KeepsReaderMessagePositionOrFollowsTail(bool following)
+    {
+        const string key = GatewayScenario.EmptySessionKey;
+        const string sessionId = "viewport-session";
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        server.OverrideSessionListRead(_ => new { sessions = new[] { new { key, sessionId } } });
+        const string refreshMarker = " Refreshed.";
+        void SetWindow(int start, int count, bool more, string? marked = null) => server.OverrideChatRead("chat.history", _ => new
+        {
+            sessionKey = key, sessionId, hasMore = more, olderCursor = more ? "older-window" : null,
+            messages = Enumerable.Range(start, count).Select(seq => new
+            {
+                role = seq % 2 == 1 ? "user" : "assistant",
+                content = $"Viewport message {seq}." + (marked == $"Viewport message {seq}." ? refreshMarker : ""),
+                __openclaw = new { id = $"viewport-{seq}", seq },
+            }).ToArray(),
+        });
+        SetWindow(1, 202, more: false);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) =>
+        {
+            if (sessions.Any(session => session.Key == key && session.SessionId == sessionId)) ready.TrySetResult();
+        };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var source = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-state.json"));
+        await source.LoadHistoryAsync(key);
+        var initial = (await source.LoadAsync()).Timelines[key];
+        await WithChatAsync(800, async (surface, _, _, _) =>
+        {
+            await AwaitInitialTailAsync(surface, key, initial.Entries.Last().Id);
+            (string Text, double Y)? reader = null;
+            if (!following)
+                await ui.RunOnUIAsync(async () =>
+                {
+                    var view = Assert.Single(FindDescendants<ItemsView>(surface));
+                    var scroll = view.ScrollView;
+                    scroll.ScrollTo(0, scroll.ScrollableHeight / 2,
+                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                    await WaitForRenderedConditionAsync(() => scroll.State == ScrollingInteractionState.Idle &&
+                        scroll.VerticalOffset > 0 && scroll.VerticalOffset < scroll.ScrollableHeight - scroll.ViewportHeight,
+                        "reader has left the following range");
+                    reader = ReadVisibleAssistant(view, initial);
+                });
+
+            var marked = reader?.Text ?? "Viewport message 204.";
+            SetWindow(following ? 5 : 3, 200, more: true, marked: marked);
+            await source.LoadHistoryAsync(key, force: true, authoritative: true);
+            var refreshed = (await source.LoadAsync()).Timelines[key];
+            Assert.Equal(following ? 204 : 202, refreshed.Entries.Count);
+            var renderedText = marked + refreshMarker;
+            await ui.RunOnUIAsync(async () =>
+            {
+                var view = Assert.Single(FindDescendants<ItemsView>(surface));
+                var rendered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                double? previousY = null;
+                var settled = 0;
+                void ObserveFrame(object? sender, object args)
+                {
+                    try
+                    {
+                        var y = TryViewportMessageY(view, refreshed, renderedText, requireRenderedText: true);
+                        settled = y is not null && view.ScrollView.State == ScrollingInteractionState.Idle && y == previousY
+                            ? settled + 1 : 0;
+                        previousY = y;
+                        if (settled >= InitialTailConfirmation.SettledFramesBeforeDecision &&
+                            (reader is not { } anchor || Math.Abs(y!.Value - anchor.Y) <= 2))
+                            rendered.TrySetResult();
+                    }
+                    catch (Exception error) { rendered.TrySetException(error); }
+                }
+                CompositionTarget.Rendering += ObserveFrame;
+                try { await rendered.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
+                catch (TimeoutException)
+                {
+                    throw new TimeoutException($"Refreshed answer did not settle: message={renderedText}; before={reader?.Y}; after={previousY}.");
+                }
+                finally { CompositionTarget.Rendering -= ObserveFrame; }
+            });
+            if (following)
+                await AwaitInitialTailAsync(surface, key, refreshed.Entries.Last().Id);
+        }, initialThreadId: key, renderProvider: source);
+        await client.DisconnectAsync();
+    }
+
+    private static (string Text, double Y) ReadVisibleAssistant(ItemsView view, ChatTimelineState timeline)
+    {
+        var candidates = timeline.Entries.Where(row => row.Kind == ChatTimelineItemKind.Assistant)
+            .Select(row => (row.Text, Y: TryViewportMessageY(view, timeline, row.Text)))
+            .Where(row => row.Y >= 0 && row.Y < view.ScrollView.ViewportHeight - 15)
+            .OrderBy(row => Math.Abs(row.Y!.Value - view.ScrollView.ViewportHeight / 2));
+        var visible = candidates.First();
+        return (visible.Text, visible.Y!.Value);
+    }
+
+    private static double? TryViewportMessageY(ItemsView view, ChatTimelineState timeline, string text,
+        bool requireRenderedText = false)
+    {
+        var id = timeline.Entries.Single(row => row.Text == text).Id;
+        var repeater = FindDescendants<ItemsRepeater>(view).FirstOrDefault();
+        var source = repeater?.ItemsSourceView;
+        if (source is null)
+            return null;
+        for (var i = 0; i < source.Count; i++)
+            if (repeater!.TryGetElement(i) is FrameworkElement element &&
+                ReferenceEquals(element.DataContext, source.GetAt(i)) &&
+                element.DataContext?.GetType().GetProperty("Key", BindingFlags.Instance | BindingFlags.Public)
+                    ?.GetValue(element.DataContext) is string key && key.EndsWith($"|kind:Assistant|id:{id}", StringComparison.Ordinal) &&
+                (!requireRenderedText || ReadToolText(element).Contains(text, StringComparison.Ordinal) ||
+                    FindDescendants<TextBlock>(element).Any(block => block.Text.Contains(text, StringComparison.Ordinal))))
+                return element.TransformToVisual(view.ScrollView).TransformPoint(new Point()).Y;
+        return null;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task ConversationParity_ProgrammaticOrComposerFocusRetainsFollowing(bool transcriptFocus)
     {
         await WithChatAsync(480, async (surface, _, _, provider) =>

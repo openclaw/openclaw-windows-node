@@ -593,7 +593,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             AssistantAvatarImageSource: avatarCache,
             AssistantRosterAgent: selectedRosterAgent,
             ViewportWidth: viewportWidth,
-            AdmitInitialEntrances: admitInitialEntrances));
+            AdmitInitialEntrances: admitInitialEntrances,
+            HistoryNavigationScope: effectiveThread is not null && nativeProvider is not null
+                ? nativeProvider.GetHistoryNavigationScope(effectiveThread.Id) : default));
 
         var pendingQuestion = effectiveThread is null ? null : questionSnapshot?.Prompts.FirstOrDefault(prompt =>
             prompt.Request.Status == "pending"

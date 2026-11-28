@@ -77,8 +77,8 @@ public sealed class ConnectEnvelopeBuilderTests
     }
 
     [Theory]
-    [InlineData("operator", true, new[] { "exec-approvals", "model-selection-policy", "chat-only-assistant-text" })]
-    [InlineData("operator", false, new[] { "model-selection-policy" })]
+    [InlineData("operator", true, new[] { "exec-approvals", "model-selection-policy", "chat-only-assistant-text", "chat-history-queue-observation" })]
+    [InlineData("operator", false, new[] { "model-selection-policy", "chat-history-queue-observation" })]
     [InlineData("node", true, new string[] { })]
     [InlineData("node", false, new string[] { })]
     public void OperatorCapabilities_ComposeModelPolicyWithoutMakingHeadlessOrNodeClientsApprovalHandlers(
@@ -598,8 +598,8 @@ public sealed class ConnectEnvelopeBuilderTests
         testCase.Profile == ConnectEnvelopeProfile.Node ? ["screen", "system"] :
         testCase.Role != "operator" ? [] :
         testCase.SupportsExecApprovals
-            ? ["exec-approvals", "model-selection-policy", "chat-only-assistant-text"]
-            : ["model-selection-policy"];
+            ? ["exec-approvals", "model-selection-policy", "chat-only-assistant-text", "chat-history-queue-observation"]
+            : ["model-selection-policy", "chat-history-queue-observation"];
 
     private static JsonArray ToJsonArray(IEnumerable<string> values) =>
         new(values.Select(value => (JsonNode?)JsonValue.Create(value)).ToArray());

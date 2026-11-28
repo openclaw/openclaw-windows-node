@@ -375,7 +375,6 @@ internal sealed class ChatHistoryLoader : IDisposable
         try
         {
             var runLease = olderPage is null ? _state.CaptureHistoryRun(threadId) : null;
-            var connectionEpoch = _bridge.ChatMessageReadConnectionEpoch;
             request = olderPage is null ? _bridge.RequestChatHistoryAsync(threadId)
                 : _bridge.RequestOlderChatHistoryAsync(threadId, olderPage);
             var history = await request
@@ -386,12 +385,6 @@ internal sealed class ChatHistoryLoader : IDisposable
                 outcome = ChatTelemetryOutcome.Canceled;
                 return;
             }
-
-            if (runLease is { TranscriptTurnGeneration: not null } && connectionEpoch is { } epoch &&
-                history.TerminalRun is { HasNoQueuedInputs: false } terminal &&
-                await ConfirmEarlierPendingInputsAsync(commitToken, runLease, history, terminal, epoch,
-                    linkedCancellation.Token).ConfigureAwait(false))
-                history.TerminalRun = terminal with { HasNoQueuedInputs = true };
 
             if (olderPage is not null && history.WindowReset)
             {
@@ -543,53 +536,6 @@ internal sealed class ChatHistoryLoader : IDisposable
                 replacement: pending.Replacement,
                 supersedeReplacement: false)
             .ConfigureAwait(false);
-    }
-
-    private async Task<bool> ConfirmEarlierPendingInputsAsync(ChatHistoryCommitToken token,
-        ChatHistoryRunLease lease, ChatHistoryInfo first, ChatHistoryTerminalRun terminal, long epoch,
-        CancellationToken cancellationToken)
-    {
-        if (first.RetainedInputs is not { NextBefore: { } before } page || first.SessionId != lease.SessionId ||
-            lease.RunId is not null && lease.RunId != terminal.RunId ||
-            page.Ids.Count == 0 || page.Ids.Count >= page.Total)
-            return false;
-
-        // The Gateway cursor walks the pending-input ledger, not the transcript.
-        // Each page must consume at least one previously unseen row of the fixed total.
-        var seen = new HashSet<string>(page.Ids, StringComparer.Ordinal);
-        while (seen.Count < page.Total)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!_state.IsHistoryRequestCurrent(token) || _state.CaptureHistoryRun(token.ThreadId) != lease)
-                return false;
-
-            ChatHistoryInfo next;
-            try
-            {
-                next = await _bridge.RequestPendingChatHistoryAsync(token.ThreadId, before,
-                    epoch, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or InvalidOperationException
-                or NotSupportedException or System.IO.IOException or System.Text.Json.JsonException)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                return false;
-            }
-
-            if (next.SessionId != lease.SessionId || next.SessionKey != token.ThreadId || next.WindowReset ||
-                first.ActiveLeafEntryId != next.ActiveLeafEntryId ||
-                next.TerminalRun is not { } observation || observation.RunId != terminal.RunId || observation.State != terminal.State ||
-                next.RetainedInputs is not { } retained || retained.Total != page.Total || retained.Ids.Count == 0)
-                return false;
-            foreach (var id in retained.Ids)
-                if (!seen.Add(id)) return false;
-            if (retained.NextBefore is not { } cursor)
-                return seen.Count == page.Total;
-            if (seen.Count >= page.Total || cursor >= before)
-                return false;
-            before = cursor;
-        }
-        return false;
     }
 
     private ChatHistoryRebuildPlan BuildPlan(
@@ -779,7 +725,7 @@ internal sealed class ChatHistoryLoader : IDisposable
                     : null)
             {
                 Presentation = replayPart.Presentation,
-                TranscriptSessionId = role == "assistant" && !message.Presentation.IsImported &&
+                TranscriptSessionId = role == "user" || role == "assistant" && !message.Presentation.IsImported &&
                     !message.Presentation.IsIndependent && message.PersistedRunId is not null ? history.SessionId : null,
                 TranscriptRunId = role == "assistant" ? message.PersistedRunId : null,
                 UsageSnapshotTimestamp = role == "assistant" && message.Ts > 0

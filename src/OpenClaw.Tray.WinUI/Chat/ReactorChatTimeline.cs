@@ -45,7 +45,8 @@ public sealed record ReactorChatTimelineProps(
     IChatAgentAvatarImageSource? AssistantAvatarImageSource = null,
     ChatAgentPresentation? AssistantRosterAgent = null,
     bool ReducedMotion = false,
-    bool AdmitInitialEntrances = false);
+    bool AdmitInitialEntrances = false,
+    (string? SessionId, long ReplacementGeneration) HistoryNavigationScope = default);
 
 /// <summary>
 /// Reactor-owned production timeline. Reactor's keyed ItemsView handles row
@@ -252,8 +253,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         // Existing rows never glide when a message arrives or a reply streams. Tail follow is
         // immediate; only newly admitted rows animate. Explicit reader reflows use CaptureAll.
         messageMotionScope.Current = rowScope;
+        var (physicalSessionId, replacementGeneration) = props.HistoryNavigationScope;
         var initialTailRequestKey =
-            $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{jumpRevision}";
+            $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{physicalSessionId}|{replacementGeneration}|{jumpRevision}";
         var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null;
         var contentRevision = props.Timeline.Entries;
         if (atTail)

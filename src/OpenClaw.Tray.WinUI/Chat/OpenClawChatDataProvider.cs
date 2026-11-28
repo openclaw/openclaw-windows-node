@@ -277,6 +277,12 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
     internal string? GetSessionId(string threadId) =>
         _state.GetSessionId(threadId);
 
+    internal (string? SessionId, long ReplacementGeneration) GetHistoryNavigationScope(string threadId)
+    {
+        var token = _state.CaptureHistoryToken(threadId);
+        return (token.SessionId, token.ReplacementGeneration);
+    }
+
     internal Task<ModelsListInfo?> RequestSessionModelsListAsync(string sessionKey) =>
         _bridge.RequestSessionModelsListAsync(sessionKey);
 
@@ -1705,6 +1711,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             ProjectionContext());
         Publish(transition.Snapshot);
 
+        foreach (var token in transition.CarriedPromptReads)
+            _ = _historyLoader.LoadAsync(token.ThreadId, force: true, expectedToken: token);
         foreach (var threadId in transition.QueuedThreadsToDrain)
         {
             _ = TryDispatchNextQueuedSend(threadId);

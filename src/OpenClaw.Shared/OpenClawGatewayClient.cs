@@ -815,18 +815,6 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return ParseChatHistory(payload, effectiveSessionKey);
     }
 
-    public async Task<ChatHistoryInfo> RequestPendingChatHistoryAsync(string sessionKey, long pendingBefore,
-        long connectionEpoch, CancellationToken cancellationToken)
-    {
-        // chat.history only accepts a sessionId selector with messageId. The caller
-        // compares the returned physical session before accepting the continuation.
-        var payload = await SendResponseRequestAsync("chat.history",
-            new { sessionKey, pendingBefore },
-            15000, connectionEpoch, cancellationToken).ConfigureAwait(false);
-        var responseKey = payload.ValueKind == JsonValueKind.Object ? ReadFirstString(payload, "sessionKey") : null;
-        return ParseHistoryResponse(payload, responseKey ?? string.Empty, includeMessages: false);
-    }
-
     private const int ChatMessageReadTimeoutMs = 15000;
     private const int SessionFileReadTimeoutMs = 15000;
     private const string SessionFileReadTimeoutEnvironmentVariable = "OPENCLAW_SESSION_FILE_READ_TIMEOUT_MS";
@@ -1108,10 +1096,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         || string.Equals(decision, "allow-always", StringComparison.Ordinal)
         || string.Equals(decision, "deny", StringComparison.Ordinal);
 
-    private static ChatHistoryInfo ParseChatHistory(JsonElement payload, string sessionKey) =>
-        ParseHistoryResponse(payload, sessionKey, includeMessages: true);
-
-    private static ChatHistoryInfo ParseHistoryResponse(JsonElement payload, string sessionKey, bool includeMessages)
+    private static ChatHistoryInfo ParseChatHistory(JsonElement payload, string sessionKey)
     {
         var info = new ChatHistoryInfo { SessionKey = sessionKey };
         if (payload.ValueKind != JsonValueKind.Object) return info;
@@ -1126,11 +1111,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             info.OlderCursor = cursor.GetString();
             info.HasMore = true;
         }
-        info.RetainedInputs = ParseRetainedInputs(payload, out var hasNoQueuedInputs);
-        if (payload.TryGetProperty("sessionInfo", out var sessionInfo) && sessionInfo.ValueKind == JsonValueKind.Object)
-            info.ActiveLeafEntryId = ReadFirstString(sessionInfo, "activeLeafEntryId");
-        info.TerminalRun = ParseTerminalHistoryRun(payload, info.SessionId, hasNoQueuedInputs);
-        if (!includeMessages) return info;
+        info.TerminalRun = ParseTerminalHistoryRun(payload, info.SessionId);
         info.InFlightRun = ParseActiveInFlightRun(payload, sessionKey);
 
         if (!payload.TryGetProperty("messages", out var msgs) || msgs.ValueKind != JsonValueKind.Array)
@@ -1278,8 +1259,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         };
     }
 
-    private static ChatHistoryTerminalRun? ParseTerminalHistoryRun(JsonElement payload, string? sessionId,
-        bool hasNoQueuedInputs)
+    private static ChatHistoryTerminalRun? ParseTerminalHistoryRun(JsonElement payload, string? sessionId)
     {
         if (string.IsNullOrWhiteSpace(sessionId) ||
             !payload.TryGetProperty("sessionInfo", out var session) || session.ValueKind != JsonValueKind.Object ||
@@ -1296,35 +1276,29 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             "killed" => "aborted",
             _ => null,
         };
-        return state is null ? null : new(runId, state, ReadFirstString(session, "lastRunError"), hasNoQueuedInputs);
+        return state is null ? null : new(runId, state, ReadFirstString(session, "lastRunError"), HasNoQueuedHistoryInputs(payload));
     }
 
-    private static ChatRetainedInputPage? ParseRetainedInputs(JsonElement payload, out bool hasNoQueuedInputs)
+    private static bool HasNoQueuedHistoryInputs(JsonElement payload)
     {
-        hasNoQueuedInputs = false;
         if (!payload.TryGetProperty("pendingInputs", out var pending) || pending.ValueKind != JsonValueKind.Object ||
             !pending.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array ||
             !pending.TryGetProperty("total", out var total) || total.ValueKind != JsonValueKind.Number ||
             !total.TryGetInt32(out var count) || count < items.GetArrayLength())
-            return null;
+            return false;
 
-        // Page contents cannot disprove the Gateway's observation of the durable queue.
         var hasQueueObservation = pending.TryGetProperty("hasQueuedInput", out var queueObservation);
-        if (hasQueueObservation && queueObservation.ValueKind != JsonValueKind.False)
-            return null;
-
-        // The total includes retained cancelled/interrupted inputs, not just live work.
-        if (pending.TryGetProperty("queuedCount", out var queued) &&
+        if (hasQueueObservation && queueObservation.ValueKind != JsonValueKind.False ||
+            pending.TryGetProperty("queuedCount", out var queued) &&
             (queued.ValueKind != JsonValueKind.Number || !queued.TryGetInt32(out var queuedCount) || queuedCount != 0))
-            return null;
+            return false;
 
-        long? nextBefore = null;
-        if (pending.TryGetProperty("nextBefore", out var next) && next.ValueKind != JsonValueKind.Null)
-        {
-            if (next.ValueKind != JsonValueKind.Number || !next.TryGetInt64(out var cursor) || cursor <= 0)
-                return null;
-            nextBefore = cursor;
-        }
+        var hasContinuation = pending.TryGetProperty("nextBefore", out var next) && next.ValueKind != JsonValueKind.Null;
+        if (hasContinuation && (next.ValueKind != JsonValueKind.Number || !next.TryGetInt64(out var cursor) || cursor <= 0))
+            return false;
+        // Separate legacy pages do not share a storage snapshot.
+        if (!hasQueueObservation && (hasContinuation || count != items.GetArrayLength()))
+            return false;
 
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in items.EnumerateArray())
@@ -1332,10 +1306,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             if (item.ValueKind != JsonValueKind.Object || ReadFirstString(item, "id") is not { Length: > 0 } id ||
                 ReadFirstString(item, "state") is not ("cancelled" or "interrupted") ||
                 item.TryGetProperty("queued", out var isQueued) && isQueued.ValueKind != JsonValueKind.False || !ids.Add(id))
-                return null;
+                return false;
         }
-        hasNoQueuedInputs = hasQueueObservation || (nextBefore is null && ids.Count == count);
-        return new(count, ids.ToArray(), nextBefore);
+        return true;
     }
 
     private static JsonElement ProjectAssistantDisplayContent(JsonElement message)
