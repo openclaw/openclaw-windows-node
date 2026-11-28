@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Services;
@@ -7,7 +8,7 @@ namespace OpenClawTray.Services;
 internal interface IUpdateBackend : IUpdateCheckBoundary
 {
     string? GetChangelog();
-    Task<bool> DownloadAndInstallAsync(Action downloadCompleted);
+    Task<bool> DownloadAndInstallAsync(Action downloadCompleted, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
