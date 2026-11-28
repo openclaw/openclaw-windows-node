@@ -6269,6 +6269,7 @@
   <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>無法開始下載</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>本機 AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>本機 AI</value></data>
+  <data name="LocalAiPage_RequirementsLink.Content" xml:space="preserve"><value>需求與安裝指南</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>在這部電腦上私密執行經過驗證的原生 llama-server。模型只會在收到要求時載入。</value></data>
   <data name="LocalAiPage_UnavailableInfoBar.Title" xml:space="preserve"><value>本機 AI 無法使用</value></data>
   <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>查看原因</value></data>
@@ -6409,7 +6410,7 @@
   <data name="Onboarding_LocalAi_UnavailableDetailsDialogTitle" xml:space="preserve"><value>本機 AI 無法使用的原因</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsDialogClose" xml:space="preserve"><value>關閉</value></data>
   <data name="LocalAi_Reason_RuntimeUnavailable" xml:space="preserve"><value>此本機 AI 版本不包含適用於偵測到的 Windows 架構的原生 llama-server 執行階段。</value></data>
-  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>NVIDIA 驅動程式未回報任何 NVIDIA GPU。請安裝或修復 NVIDIA 驅動程式,然後再試一次設定。</value></data>
+  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>此受管理安裝需要相容的 NVIDIA GPU 及其驅動程式。此安裝不支援 Intel Arc 和其他非 NVIDIA GPU。如果這部電腦也配備 NVIDIA GPU，請檢查其驅動程式，然後再試一次設定。</value></data>
   <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>所選模型在此本機 AI 版本中無法使用。</value></data>
   <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw 無法讀取穩定的 NVIDIA GPU 識別碼、記憶體、驅動程式或 CUDA 能力。</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} 需要 {1} 的 GPU 記憶體,用於模型權重、KV 快取和執行階段工作區。OpenClaw 偵測到 {2}。</value></data>

@@ -724,6 +724,25 @@ public class LocalizationValidationTests
         }
     }
 
+    [Theory]
+    [InlineData("en-us", "requires a compatible NVIDIA GPU and driver", "are not supported by this setup", "If this computer also has an NVIDIA GPU")]
+    [InlineData("fr-fr", "nécessite un GPU NVIDIA compatible et son pilote", "ne sont pas pris en charge par cette installation", "Si cet ordinateur possède également un GPU NVIDIA")]
+    [InlineData("nl-nl", "vereist een compatibele NVIDIA-GPU en bijbehorend stuurprogramma", "worden niet ondersteund door deze installatie", "Als deze computer ook een NVIDIA-GPU heeft")]
+    [InlineData("pt-br", "requer uma GPU NVIDIA compatível e seu driver", "não são compatíveis com esta instalação", "Se este computador também tiver uma GPU NVIDIA")]
+    [InlineData("zh-cn", "需要兼容的 NVIDIA GPU 及其驱动程序", "不支持 Intel Arc 和其他非 NVIDIA GPU", "如果此计算机还配有 NVIDIA GPU")]
+    [InlineData("zh-tw", "需要相容的 NVIDIA GPU 及其驅動程式", "不支援 Intel Arc 和其他非 NVIDIA GPU", "如果這部電腦也配備 NVIDIA GPU")]
+    public void LocalAi_NoNvidiaGuidance_ExplainsManagedSupportAndConditionalDriverAdvice(
+        string locale, string requirement, string unsupported, string conditionalDriverAdvice)
+    {
+        var resources = LoadResw(Path.Combine(GetStringsDirectory(), locale, "Resources.resw"));
+        var reason = resources["LocalAi_Reason_NoNvidiaGpu"];
+        Assert.Contains(requirement, reason);
+        Assert.Contains("Intel Arc", reason);
+        Assert.Contains(unsupported, reason);
+        Assert.Contains(conditionalDriverAdvice, reason);
+        Assert.False(string.IsNullOrWhiteSpace(resources["LocalAiPage_RequirementsLink.Content"]));
+    }
+
     [Fact]
     public void AccessibilityNames_ExistInEveryLocale()
     {

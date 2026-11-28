@@ -1,5 +1,71 @@
 # Managed Local AI profiles
 
+This guide covers Companion's managed Local AI installer, which downloads and
+supervises a verified native llama-server on this PC. Its requirements do not
+apply to every local model provider you can configure on a Gateway.
+
+## Managed setup requirements
+
+| Component | Managed support |
+| --- | --- |
+| Windows architecture | A cataloged native runtime for x64 or ARM64, with a model profile offered for that architecture. Some profiles, including experimental Bonsai 2, are x64-only. |
+| GPU and driver | A compatible NVIDIA GPU with a working driver that exposes the required CUDA capability. Having an NVIDIA GPU alone does not guarantee that a model fits. |
+| Intel Arc, AMD and other non-NVIDIA GPUs | Not supported by this managed setup. Installing an NVIDIA driver does not add support for these GPUs. |
+| CPU-only or Vulkan execution | No managed fallback is provided. |
+| Memory and disk | Enough GPU memory, system RAM and installation space for the selected model and context profile. These requirements vary by profile; the Bonsai figures below are not universal Local AI minimums. |
+
+### Understanding an unavailable result
+
+Open **See why** on the Local AI page or in setup for the reason. The hardware
+check reads the NVIDIA CUDA driver, not a complete inventory of graphics cards.
+No NVIDIA GPU reported by that check does not mean it identified Intel Arc,
+or that installing a driver will make a non-NVIDIA GPU compatible.
+
+If the PC only has Intel Arc or other non-NVIDIA graphics, managed setup is
+unavailable by design. If it also has an NVIDIA GPU, check that GPU's driver
+and try setup again. A failed or incomplete probe is different from unsupported
+hardware: when Companion cannot read required GPU, memory or disk facts, it
+keeps **Recheck** available rather than treating the result as definitive.
+Resolve the reported problem and recheck; memory or disk shortages need the
+specific resources named by the explanation.
+
+## Installing managed Local AI
+
+1. During Companion setup, use the managed **Local AI** choice on the AI setup
+   page when it is offered. Review the model, downloads and any required consent
+   before installing. An unavailable choice does not block using a separately
+   configured provider.
+2. After setup, open **Settings > Local AI**. When setup is available and no
+   model is installed, **Retry setup or download** opens the appropriate setup
+   flow for the app-managed Gateway. If no suitable managed Gateway can be
+   identified, Companion opens full setup or asks you to review Connection
+   settings instead of configuring an unrelated Gateway.
+3. After installation, the Local AI page shows the runtime, model and Gateway
+   connection state. Use its existing Start, Stop and repair actions as needed;
+   follow any **Use Local AI** guidance to select it for a native Gateway.
+   **Requirements and setup** stays available even when managed setup is not.
+
+The installer supplies its pinned runtime dependencies. This guide does not
+require a separate CUDA Toolkit installation.
+
+## Separately configured local providers
+
+LM Studio or Ollama can be configured as providers on the Gateway independently
+of Companion's managed installer, using the setup options exposed by that
+Gateway. Install and configure the provider separately, load a model supported
+by that provider, and follow its Gateway connection instructions. Each provider
+has its own operating-system, hardware, driver and model requirements. Check
+those requirements for your exact GPU; neither provider nor a manually launched
+llama-server is a guaranteed Intel Arc fix. This guide does not qualify those
+combinations or change managed Local AI eligibility.
+
+Gateway provider configuration is also distinct from **Share Windows Ollama**,
+the optional node capability on the Permissions page. Enabling sharing does not
+install managed Local AI or configure a Gateway model provider. See
+[Local AI provider versus shared Windows Ollama](OPERATOR_NODE_CONCEPTS.md#local-ai-provider-versus-shared-windows-ollama).
+
+## How managed profiles are selected
+
 The Local AI page and setup wizard use the shared inference catalog. Selection
 tries models in recommendation order, then context and KV-cache profiles in
 quality order. The existing Qwen profile stays preferred when it fits. A smaller

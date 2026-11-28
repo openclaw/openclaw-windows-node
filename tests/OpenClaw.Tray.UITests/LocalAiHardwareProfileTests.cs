@@ -1,6 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
+using Microsoft.UI.Xaml.Input;
 using OpenClaw.Connection;
 using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared.Inference;
@@ -97,9 +100,9 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
     }
 
 #if LOCAL_AI_BASELINE
-    private const bool IsBaseline = true;
+    private static readonly bool IsBaseline = true;
 #else
-    private const bool IsBaseline = false;
+    private static readonly bool IsBaseline = false;
 #endif
 
     [Theory]
@@ -127,7 +130,11 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(ui.Container, theme);
                 await TestSupport.WaitForRenderedConditionAsync(
                     () => page.IsLoaded && viewModel.IsAvailabilityKnown, "Local AI hardware eligibility");
-                var fits = !IsBaseline && vramGiB == 8;
+                if (IsBaseline)
+                    Assert.Null(page.FindName("LocalAiRequirementsLink"));
+                else
+                    AssertRequirementsLink(page);
+                var fits = vramGiB == 8;
                 var fallback = page.FindName("LocalAiProfileSelectionText") as TextBlock;
                 var unavailable = Assert.IsType<InfoBar>(page.FindName("LocalAiUnavailableInfoBar"));
                 Assert.Equal(fits ? Visibility.Collapsed : Visibility.Visible, unavailable.Visibility);
@@ -143,8 +150,27 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
                 else if (fallback is not null)
                     Assert.Equal(Visibility.Collapsed, fallback.Visibility);
 
-                await CaptureAsync(ui.TestWindow, page, "settings", vramGiB, theme,
-                    fits ? fallback!.Text : unavailable.Title);
+                var detailsTip = Assert.IsType<TeachingTip>(page.FindName("LocalAiUnavailableDetailsTip"));
+                try
+                {
+                    var label = fits ? fallback!.Text : unavailable.Title;
+                    if (vramGiB == 0)
+                    {
+                        OnboardingNativeProof.ActivateOwned(ui.TestWindow);
+                        var details = Assert.IsType<HyperlinkButton>(page.FindName("LocalAiUnavailableDetailsButton"));
+                        Assert.IsAssignableFrom<IInvokeProvider>(new HyperlinkButtonAutomationPeer(details)
+                            .GetPattern(PatternInterface.Invoke)).Invoke();
+                        await TestSupport.WaitForRenderedConditionAsync(() => detailsTip.IsOpen, "See why explanation");
+                        var reason = Assert.IsType<TextBlock>(page.FindName("LocalAiUnavailableReasonText"));
+                        AssertNoNvidiaExplanation(reason.Text);
+                        label = reason.Text;
+                    }
+                    await CaptureAsync(ui.TestWindow, page, "settings", vramGiB, theme, label);
+                }
+                finally
+                {
+                    detailsTip.IsOpen = false;
+                }
             }
             finally
             {
@@ -153,6 +179,64 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
                 ui.TestWindow.AppWindow.Move(originalPosition);
             }
         });
+    }
+
+    [NativeKeyboardTheory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task LocalAiPage_UnavailableRequirementsLink_IsInNativeTabOrder(ElementTheme theme)
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var originalSize = ui.TestWindow.AppWindow.Size;
+            var originalPosition = ui.TestWindow.AppWindow.Position;
+            FitWindow(ui.TestWindow);
+            using var viewModel = new LocalAiPageViewModel(new InertRuntime(), new InertGateway(),
+                new InertCommands(), new WinUIDispatcher(ui.Dispatcher), new HardwareProbe(0), new InertSwitcher());
+            var page = new LocalAiPage { DataContext = viewModel };
+            ui.Container.Children.Add(page);
+            try
+            {
+                viewModel.Activate(null);
+                await OnboardingNativeProof.ApplyThemeSurfaceAsync(ui.Container, theme);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => page.IsLoaded && viewModel.IsAvailabilityKnown, "unavailable Local AI keyboard navigation");
+                Assert.False(viewModel.CanRetrySetup);
+                var link = AssertRequirementsLink(page);
+                var details = Assert.IsType<HyperlinkButton>(page.FindName("LocalAiUnavailableDetailsButton"));
+                var handle = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
+                await NativeKeyboardProof.ActivateAsync(handle);
+                Assert.True(details.Focus(FocusState.Keyboard));
+                NativeKeyboardProof.Press(handle, Windows.System.VirtualKey.Tab, shift: true);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => ReferenceEquals(link, FocusManager.GetFocusedElement(page.XamlRoot)),
+                    "Shift+Tab reaches requirements while setup is unavailable");
+                Assert.Equal(FocusState.Keyboard, link.FocusState);
+                NativeKeyboardProof.Press(handle, Windows.System.VirtualKey.Tab);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => ReferenceEquals(details, FocusManager.GetFocusedElement(page.XamlRoot)),
+                    "Tab leaves requirements for See why");
+            }
+            finally
+            {
+                ui.Container.Children.Clear();
+                ui.TestWindow.AppWindow.Resize(originalSize);
+                ui.TestWindow.AppWindow.Move(originalPosition);
+            }
+        });
+    }
+
+    private static HyperlinkButton AssertRequirementsLink(LocalAiPage page)
+    {
+        var link = Assert.IsType<HyperlinkButton>(page.FindName("LocalAiRequirementsLink"));
+        Assert.True(link.IsEnabled && link.IsTabStop);
+        Assert.Equal(Visibility.Visible, link.Visibility);
+        Assert.Equal("Requirements and setup", new HyperlinkButtonAutomationPeer(link).GetName());
+        Assert.Equal(new Uri("https://github.com/openclaw/openclaw-windows-node/blob/main/docs/LOCAL_AI_PROFILES.md"),
+            link.NavigateUri);
+        return link;
     }
 
     [Theory]
@@ -195,7 +279,7 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
                 var unavailable = Assert.IsType<InfoBar>(control.FindName("LocalAiUnavailablePanel"));
                 var selector = Assert.IsType<ComboBox>(control.FindName("LocalAiModelSelector"));
                 var progress = Assert.IsType<ProgressRing>(control.FindName("LocalAiAvailabilityProgressRing"));
-                var fits = !IsBaseline && vramGiB == 8;
+                var fits = vramGiB == 8;
                 await TestSupport.WaitForRenderedConditionAsync(
                     () => control.IsLoaded && !progress.IsActive && (fits
                         ? selector.SelectedItem is ComboBoxItem
@@ -216,6 +300,20 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
                 }
                 else
                     label = unavailable.Title;
+                if (vramGiB == 0)
+                {
+                    OnboardingNativeProof.ActivateOwned(window);
+                    var details = Assert.IsType<HyperlinkButton>(control.FindName("LocalAiUnavailableDetailsButton"));
+                    var reason = Assert.IsType<TextBlock>(control.FindName("LocalAiUnavailableReasonText"));
+                    Assert.Equal(Visibility.Collapsed, reason.Visibility);
+                    Assert.IsAssignableFrom<IInvokeProvider>(new HyperlinkButtonAutomationPeer(details)
+                        .GetPattern(PatternInterface.Invoke)).Invoke();
+                    await TestSupport.WaitForRenderedConditionAsync(
+                        () => reason.IsLoaded && reason.Visibility == Visibility.Visible && !string.IsNullOrWhiteSpace(reason.Text),
+                        "onboarding See why explanation");
+                    AssertNoNvidiaExplanation(reason.Text);
+                    label = reason.Text;
+                }
                 await CaptureAsync(window, page, "onboarding", vramGiB, theme, label);
             }
             finally
@@ -234,15 +332,37 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
         int vramGiB, ElementTheme theme, string label)
     {
         OnboardingNativeProof.ActivateOwned(window);
-        // OCR checks decision phrases, while the exact profile copy is asserted before capture.
-        string[] labels = !IsBaseline && vramGiB == 8
-            ? ["Setup can use Bonsai 2", "experimental", "8,192 context tokens"]
-            : ["not available"];
+        // One frame per scenario preserves the visual runner's 12-frame stage contract.
+        // Both stages use the same hardware; only the guidance and link are expected to change.
+        string[] labels = vramGiB == 0
+            ? IsBaseline
+                ? ["No NVIDIA GPU", "repair the NVIDIA driver"]
+                : surface == "settings"
+                    ? ["Requirements and setup", "non-NVIDIA GPUs", "check its driver"]
+                    : ["non-NVIDIA GPUs", "check its driver"]
+            : vramGiB == 8
+                ? ["Setup can use Bonsai 2", "experimental", "8,192 context tokens"]
+                : ["not available"];
         using var capture = await OnboardingNativeProof.CaptureAsync(window,
             $"{(IsBaseline ? "before" : "after")}-{surface}-{vramGiB}gib-{theme}", output, labels,
             new { baseline = IsBaseline, surface, vramGiB, theme = theme.ToString(), syntheticHardware = true, exactCopy = label },
             requiredContent: page);
         OnboardingNativeProof.AssertSourceUnchanged();
+    }
+
+    private static void AssertNoNvidiaExplanation(string text)
+    {
+        if (IsBaseline)
+        {
+            Assert.Equal("No NVIDIA GPU was reported by the NVIDIA driver. Install or repair the NVIDIA driver, then try setup again.", text);
+        }
+        else
+        {
+            Assert.Contains("managed setup requires a compatible NVIDIA GPU and driver", text);
+            Assert.Contains("Intel Arc and other non-NVIDIA GPUs are not supported", text);
+            Assert.Contains("If this computer also has an NVIDIA GPU", text);
+            Assert.DoesNotContain("Install or repair the NVIDIA driver", text);
+        }
     }
 
     private static void FitWindow(Window window)
@@ -259,9 +379,8 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
             var hardware = new HostHardwareInfo(Architecture.X64, 32L << 30, 24L << 30,
                 vramGiB == 0 ? [] : [new(GpuVendor.Nvidia, "Synthetic RTX 4060", (long)vramGiB << 30,
                     (long)vramGiB << 30, CudaMajorVersion: 13, StableId: "synthetic-profile-proof")], false);
-#if !LOCAL_AI_BASELINE
+            // The guidance baseline already supports the same profiles and disk qualification.
             hardware = hardware with { LocalAiDiskSpace = new(20L << 30, 20L << 30, true) };
-#endif
             return hardware;
         }
     }

@@ -6270,6 +6270,7 @@ Open Kanalen in het webdashboard.</value>
   <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Kan de download niet starten</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Lokale AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Lokale AI</value></data>
+  <data name="LocalAiPage_RequirementsLink.Content" xml:space="preserve"><value>Vereisten en installatie</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Voer de geverifieerde native llama-server privé uit op deze computer. Modellen worden alleen op aanvraag geladen.</value></data>
   <data name="LocalAiPage_UnavailableInfoBar.Title" xml:space="preserve"><value>Lokale AI is niet beschikbaar</value></data>
   <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>Bekijk waarom</value></data>
@@ -6410,7 +6411,7 @@ Open Kanalen in het webdashboard.</value>
   <data name="Onboarding_LocalAi_UnavailableDetailsDialogTitle" xml:space="preserve"><value>Waarom lokale AI niet beschikbaar is</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsDialogClose" xml:space="preserve"><value>Sluiten</value></data>
   <data name="LocalAi_Reason_RuntimeUnavailable" xml:space="preserve"><value>Deze release van lokale AI bevat geen native llama-server-runtime voor de gedetecteerde Windows-architectuur.</value></data>
-  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>Er is geen NVIDIA-GPU gerapporteerd door het NVIDIA-stuurprogramma. Installeer of herstel het NVIDIA-stuurprogramma en probeer de installatie opnieuw.</value></data>
+  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>Deze beheerde installatie vereist een compatibele NVIDIA-GPU en bijbehorend stuurprogramma. Intel Arc en andere niet-NVIDIA-GPU's worden niet ondersteund door deze installatie. Als deze computer ook een NVIDIA-GPU heeft, controleer dan het stuurprogramma en probeer de installatie opnieuw.</value></data>
   <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>Het geselecteerde model is niet beschikbaar in deze release van lokale AI.</value></data>
   <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw kon geen stabiele NVIDIA-GPU-id, geheugen, stuurprogramma of CUDA-mogelijkheid lezen.</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} vereist {1} GPU-geheugen voor modelgewichten, KV-cache en runtime-werkruimte. OpenClaw detecteerde {2}.</value></data>

@@ -20,6 +20,10 @@
                        Text="Run the verified native llama-server privately on this computer. Models load only when requested."
                        Style="{StaticResource CaptionTextBlockStyle}"
                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+            <HyperlinkButton x:Name="LocalAiRequirementsLink" x:Uid="LocalAiPage_RequirementsLink"
+                             Content="Requirements and setup" HorizontalAlignment="Left"
+                             NavigateUri="https://github.com/openclaw/openclaw-windows-node/blob/main/docs/LOCAL_AI_PROFILES.md"
+                             AutomationProperties.AutomationId="LocalAiRequirementsLink"/>
             </StackPanel>
 
             <TextBlock x:Name="LocalAiProfileSelectionText" TextWrapping="Wrap" Visibility="Collapsed"
