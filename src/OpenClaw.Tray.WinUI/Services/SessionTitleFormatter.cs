@@ -7,11 +7,53 @@ namespace OpenClawTray.Services;
 /// </summary>
 internal static class SessionTitleFormatter
 {
-    private static Func<string, string> s_getLocalizedString = key => key;
+    private static IReadOnlyDictionary<string, string> s_localizedStrings =
+        new Dictionary<string, string>();
 
+    /// <summary>
+    /// Capture resources on the startup/UI thread. Gateway receive callbacks must
+    /// format titles from managed strings without calling into native MRT resources.
+    /// Call again after changing the application language.
+    /// </summary>
     internal static void ConfigureLocalization(Func<string, string> getLocalizedString)
     {
-        s_getLocalizedString = getLocalizedString ?? throw new ArgumentNullException(nameof(getLocalizedString));
+        ArgumentNullException.ThrowIfNull(getLocalizedString);
+        string[] keys =
+        [
+            "SessionTitle_Main",
+            "SessionTitle_Global",
+            "SessionTitle_Unknown",
+            "SessionTitle_Direct",
+            "SessionTitle_DirectGeneric",
+            "SessionTitle_Group",
+            "SessionTitle_GroupGeneric",
+            "SessionTitle_Channel",
+            "SessionTitle_ChannelGeneric",
+            "SessionTitle_Thread",
+            "SessionTitle_ThreadGeneric",
+            "SessionTitle_Cron",
+            "SessionTitle_Heartbeat",
+            "SessionTitle_Subagent",
+            "SessionTitle_Acp",
+            "SessionTitle_Dashboard",
+            "SessionTitle_Tui",
+            "SessionTitle_Hook",
+            "SessionTitle_Harness",
+            "SessionTitle_Voice",
+            "SessionTitle_Dreaming",
+            "SessionTitle_System",
+            "SessionSubtitle_Account",
+            "SessionSubtitle_Agent",
+            "SessionSubtitle_Node",
+        ];
+        var strings = keys.ToDictionary(key => key, getLocalizedString, StringComparer.Ordinal);
+        System.Threading.Volatile.Write(ref s_localizedStrings, strings);
+    }
+
+    private static string GetLocalizedString(string key)
+    {
+        var strings = System.Threading.Volatile.Read(ref s_localizedStrings);
+        return strings.TryGetValue(key, out var value) ? value : key;
     }
 
     /// <summary>
@@ -178,13 +220,13 @@ internal static class SessionTitleFormatter
 
     private static string Localized(string key, string fallback)
     {
-        var value = s_getLocalizedString(key);
+        var value = GetLocalizedString(key);
         return value == key ? fallback : value;
     }
 
     private static string LocalizedFormat(string key, string fallback, object value)
     {
-        var format = s_getLocalizedString(key);
+        var format = GetLocalizedString(key);
         if (format == key) return fallback;
         try
         {

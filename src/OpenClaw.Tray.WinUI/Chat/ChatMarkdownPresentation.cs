@@ -489,14 +489,17 @@ internal static class ChatMarkdownPresentation
         var label = string.IsNullOrWhiteSpace(language)
             ? Localized("Chat_Code_LanguageFallback", "code")
             : language.ToLowerInvariant();
-        var codeBody = (RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize })
+        // Declare selection on the record: Reactor writes this non-nullable flag on
+        // every mount before setters run, and its pool keeps a returned RichTextBlock
+        // selectable, so a setter-only true flipped a recycled control off and back
+        // on and WinUI faulted releasing stale selection grippers mid-flip.
+        var codeBody = (RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize, IsTextSelectionEnabled = true })
             .Set(text =>
             {
                 text.Style = (Style)Application.Current.Resources["ChatCodeTextStyle"];
                 ChatVisuals.ApplyCodeFont(text);
                 text.LineHeight = ChatVisuals.CodeLineHeight;
                 text.LineStackingStrategy = LineStackingStrategy.MaxHeight;
-                text.IsTextSelectionEnabled = true;
                 text.TextWrapping = TextWrapping.NoWrap;
                 ApplyCodeSyntax(text, code, language);
             })
