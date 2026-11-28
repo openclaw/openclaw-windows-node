@@ -464,11 +464,12 @@ internal sealed class ChatConversationState
                 .Select(session => session.Key!).ToArray();
     }
 
-    internal bool CanConfirmLegacyHistoryQueue(ChatHistoryCommitToken token, ChatHistoryRunLease lease, string runId)
+    internal long? CaptureLegacyHistoryQueueRevision(ChatHistoryCommitToken token, ChatHistoryRunLease lease, string runId)
     {
         lock (_gate)
             return _history.IsCurrent(token, GetResetVersionLocked(token.ThreadId), _disposed) &&
-                MatchesTranscriptHistoryRunLocked(token.ThreadId, lease, runId);
+                MatchesTranscriptHistoryRunLocked(token.ThreadId, lease, runId)
+                ? _history.Revision(token.ThreadId) : null;
     }
 
     private bool MatchesTranscriptHistoryRunLocked(string threadId, ChatHistoryRunLease lease, string runId) =>
@@ -478,12 +479,14 @@ internal sealed class ChatConversationState
 
     internal ChatAssistantTransition? ReconcileHistoryRun(
         ChatHistoryCommitToken token, ChatHistoryRunLease lease, string? sessionId,
-        ChatMessageInfo terminal, ChatProjectionContext context, bool hasNoQueuedInputs = false)
+        ChatMessageInfo terminal, ChatProjectionContext context, bool hasNoQueuedInputs = false,
+        long? terminalHistoryRevision = null)
     {
         lock (_gate)
         {
             var threadId = token.ThreadId;
             if (!_history.IsCurrent(token, GetResetVersionLocked(threadId), _disposed) ||
+                terminalHistoryRevision is { } revision && _history.Revision(threadId) != revision ||
                 PendingPromptSessionIdLocked(threadId) is not null ||
                 sessionId != lease.SessionId || _history.ResolveSessionId(threadId) != lease.SessionId ||
                 terminal.SessionKey != threadId || terminal.RunId is not { Length: > 0 } terminalRunId ||

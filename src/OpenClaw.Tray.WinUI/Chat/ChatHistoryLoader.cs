@@ -14,7 +14,8 @@ internal sealed record ChatHistoryLoadResult(
     ChatInFlightRunInfo? InFlightRun = null,
     ChatHistoryRunLease? RunLease = null,
     string? SessionId = null,
-    ChatHistoryTerminalRun? TerminalRun = null);
+    ChatHistoryTerminalRun? TerminalRun = null,
+    long? TerminalHistoryRevision = null);
 
 /// <summary>
 /// Owns history request lifetime, in-flight coalescing, cancellation, retries,
@@ -52,6 +53,9 @@ internal sealed class ChatHistoryLoader : IDisposable
         ChatHistoryCommitToken Token,
         bool Replacement,
         bool Authoritative);
+
+    private readonly record struct LegacyQueueConfirmation(
+        ChatHistoryRunLease Lease, ChatHistoryTerminalRun Terminal, long ConnectionEpoch, long HistoryRevision);
 
     private const int MaxRetries = 3;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
@@ -372,6 +376,7 @@ internal sealed class ChatHistoryLoader : IDisposable
         Exception? failure = null;
         Task<ChatHistoryInfo>? request = null;
         var requiresReload = false;
+        LegacyQueueConfirmation? queueConfirmation = null;
         try
         {
             var runLease = olderPage is null ? _state.CaptureHistoryRun(threadId) : null;
@@ -425,22 +430,12 @@ internal sealed class ChatHistoryLoader : IDisposable
                 InFlightRun: olderPage is null ? history.InFlightRun : null,
                 RunLease: runLease, SessionId: history.SessionId,
                 TerminalRun: olderPage is null ? history.TerminalRun : null);
-            Completed?.Invoke(this, result);
-
             if (confirmationEpoch is { } epoch && runLease is { } lease && history.SessionId == lease.SessionId &&
                 result.TerminalRun is { LegacyQueueAppearsEmpty: true } terminal &&
                 (lease.RunId is null || lease.RunId == terminal.RunId) &&
-                _state.CanConfirmLegacyHistoryQueue(commitToken, lease, terminal.RunId) &&
-                await ConfirmLegacyQueueAsync(threadId, lease.SessionId, epoch, terminal, linkedCancellation.Token)
-                    .ConfigureAwait(false))
-            {
-                Completed?.Invoke(this, result with
-                {
-                    PublishSnapshot = false,
-                    InFlightRun = null,
-                    TerminalRun = terminal with { HasNoQueuedInputs = true, LegacyQueueAppearsEmpty = false },
-                });
-            }
+                _state.CaptureLegacyHistoryQueueRevision(commitToken, lease, terminal.RunId) is { } revision)
+                queueConfirmation = new(lease, terminal, epoch, revision);
+            Completed?.Invoke(this, result);
         }
         catch (OperationCanceledException)
         {
@@ -525,6 +520,18 @@ internal sealed class ChatHistoryLoader : IDisposable
                     supersedeReplacement: false);
             }
         }
+
+        // The queue check cannot commit transcript rows. Release the history slot first so
+        // an older-page gesture or a fresh transcript read need not wait for it.
+        if (queueConfirmation is { } pendingConfirmation &&
+            await ConfirmLegacyQueueAsync(threadId, pendingConfirmation.Lease.SessionId, pendingConfirmation.ConnectionEpoch,
+                pendingConfirmation.Terminal, linkedCancellation.Token).ConfigureAwait(false))
+        {
+            Completed?.Invoke(this, new(commitToken, PublishSnapshot: false,
+                RunLease: pendingConfirmation.Lease, SessionId: pendingConfirmation.Lease.SessionId,
+                TerminalRun: pendingConfirmation.Terminal with { HasNoQueuedInputs = true, LegacyQueueAppearsEmpty = false },
+                TerminalHistoryRevision: pendingConfirmation.HistoryRevision));
+        }
     }
 
     private async Task RerunAfterActivationAsync(
@@ -566,7 +573,6 @@ internal sealed class ChatHistoryLoader : IDisposable
         catch (Exception error) when (error is OperationCanceledException or TimeoutException or InvalidOperationException
             or System.IO.IOException or System.Text.Json.JsonException)
         {
-            cancellationToken.ThrowIfCancellationRequested();
             return false;
         }
     }
