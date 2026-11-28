@@ -36,7 +36,7 @@ public sealed class CredentialResolver : ICredentialResolver
         ArgumentNullException.ThrowIfNull(record);
 
         return ResolveRole(
-            _identityReader.ReadStoredDeviceToken(identityPath),
+            DeviceTokenForRecord(record, identityPath, _identityReader.ReadStoredDeviceToken(identityPath)),
             SourceDeviceToken,
             record.SharedGatewayToken,
             record.BootstrapToken);
@@ -50,10 +50,24 @@ public sealed class CredentialResolver : ICredentialResolver
         ArgumentNullException.ThrowIfNull(record);
 
         return ResolveRole(
-            _identityReader.ReadStoredNodeDeviceToken(identityPath),
+            DeviceTokenForRecord(record, identityPath, _identityReader.ReadStoredNodeDeviceToken(identityPath)),
             SourceNodeDeviceToken,
             record.SharedGatewayToken,
             record.BootstrapToken);
+    }
+
+    private static DeviceTokenReadResult DeviceTokenForRecord(
+        GatewayRecord record,
+        string identityPath,
+        DeviceTokenReadResult storedToken)
+    {
+        if (storedToken.Status != DeviceTokenReadStatus.Resolved)
+            return storedToken;
+        if (LegacyStartupDeviceToken.AllowsStoredDeviceToken(identityPath, record.Url))
+            return storedToken;
+
+        return DeviceTokenReadResult.Missing(
+            "Stored device identity is bound to a different gateway URL.");
     }
 
     private static GatewayCredentialResolution ResolveRole(
