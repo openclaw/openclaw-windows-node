@@ -59,6 +59,10 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolOutputRecovery.cs" Link="Chat\ChatToolOutputRecovery.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolDetailsProfile.cs" Link="Chat\ChatToolDetailsProfile.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatWorkingClawMotion.cs" Link="Chat\ChatWorkingClawMotion.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterLooks.cs" Link="Chat\LobsterVisits\LobsterLooks.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterComposerScene.cs" Link="Chat\LobsterVisits\LobsterComposerScene.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterVisitPlans.cs" Link="Chat\LobsterVisits\LobsterVisitPlans.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterVisitOwner.cs" Link="Chat\LobsterVisits\LobsterVisitOwner.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\AssistantFileDownloadLauncher.cs" Link="Chat\AssistantFileDownloadLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayFixtureRenderObservation.cs" Link="Chat\GatewayFixtureRenderObservation.cs" />
