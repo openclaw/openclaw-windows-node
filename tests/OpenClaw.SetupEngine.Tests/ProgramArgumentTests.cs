@@ -35,6 +35,7 @@ public sealed class ProgramArgumentTests : IDisposable
         "--tailscale",
         "--tailscale-trust-auth",
         "--validate-gateway-candidate",
+        "--preserve-existing",
     ];
 
     private readonly string _tempDir;

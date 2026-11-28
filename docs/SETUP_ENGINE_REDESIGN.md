@@ -810,6 +810,10 @@ OpenClaw.SetupEngine.Program.Main(["--log-path", "./trace.log"])
 ```
 
 Common flags include `--config`, `--headless`, `--dry-run`, `--rollback-on-failure`, `--no-rollback-on-failure`, `--log-path`, `--gateway-port`, and uninstall safety flags such as `--uninstall` plus `--confirm-destructive`.
+`--preserve-existing` refuses replacement: after acquiring the run locks, setup exits with code 2 if a local gateway record, the target distro, or its data directory exists, and `CleanupStaleDistroStep` refuses to remove a distro even with app-owned evidence.
+
+Every setup and uninstall run, and every open setup window, holds `SetupRunLock`: `setup.lock` in the data directory and `setup-target.lock` in the local setup data directory. Profiles with different `OPENCLAW_TRAY_DATA_DIR` values share the local setup directory, so the second lock serializes them. A second run fails immediately with exit code 2 instead of waiting.
+
 Normal setup uses npm `latest`. `Gateway.Version` may select an upstream npm
 channel tag or an exact OpenClaw package version. `Gateway.FallbackVersion` may
 name an exact stable release to offer after a typed compatibility failure.
@@ -844,6 +848,61 @@ by `CliUninstallHandler` and currently use separated syntax for values such as
 `--json-output <path>`.
 
 Exit codes: 0 = success, 1 = pipeline failure, 2 = bad arguments or setup lock/safety failure, 3 = cancelled
+
+### Headless setup from the tray executable
+
+```
+OpenClaw.Tray.WinUI.exe --headless-setup --config my-setup.json   # WSL route, no UI
+OpenClaw.Tray.WinUI.exe --headless-setup --config my-setup.json --force-setup --replace-existing
+.\run-app-local.ps1 -Dev -Isolated -SetupConfig .\my-setup.json   # dev: setup, then launch tray
+```
+
+`CliSetupHandler` runs `Program.Main` with `--headless --rollback-on-failure` and the
+app identity's data directories, distro name, and gateway port, the same overrides that
+interactive setup and `--uninstall` use, so the file's `DistroName` and `GatewayPort`
+are ignored. The config file is a full SetupEngine config. Start from a copy of
+`default-config.json`, because omitted fields fall back to code defaults, not to the
+bundled file. Without `--config`, the bundled file is used.
+
+Setup is skipped with exit code 0 when `StartupSetupState.RequiresSetup` reports that
+the data directory is already configured, which is the same check the tray uses to
+auto-open setup. `--force-setup` reruns the pipeline anyway.
+
+Like the setup window's replacement review, headless setup refuses with exit code 2
+when the app-owned distro, its data directory, or a local gateway record already
+exists, and prints what would be replaced. `--replace-existing` is the explicit
+consent to delete and recreate them. The distro and local setup data come from the app
+identity and are not isolated by `OPENCLAW_TRAY_DATA_DIR`, so a fresh isolated data dir
+still targets the same distro as the normal profile. Without `--replace-existing`, the
+handler also passes `--preserve-existing`, so the engine re-checks this under the shared
+setup lock and a run that loses a race with another profile preserves that profile's
+distro. It also refuses while a tray holds the single-instance mutex for the same data dir.
+
+A distro or distro data directory that is not proven to be app-owned is never
+replaced headlessly. Setup refuses with exit code 2 even with `--replace-existing`,
+prints what would be replaced, and says that the target was preserved. To replace
+it, run setup interactively and confirm the permanent replacement, or remove it
+yourself (for example `wsl --unregister <distro>`).
+
+Only `--headless-setup`, `--config <path>` (separated syntax), `--force-setup`, and
+`--replace-existing` are accepted. Anything else exits with code 2. The native MSIX
+gateway route remains interactive only. Per-capability `Settings.Node*Enabled` values
+are overwritten from the `Capabilities` section before `settings.json` is written, so
+toggle capabilities there.
+
+Headless setup is refused with exit code 2 in the packaged app. An unpackaged
+install retired by a completed Store migration, or one whose migration state cannot
+be checked, refuses with exit code 2 and prints the same guidance that normal
+startup shows in a dialog to stderr.
+
+The tray is a GUI-subsystem executable, so a shell does not wait for it. Setup also
+leaves a WSL keepalive running, which makes `Start-Process -Wait` hang. Wait on the
+process itself:
+
+```powershell
+$p = Start-Process OpenClaw.Tray.WinUI.exe -ArgumentList '--headless-setup','--config','"C:\my setup.json"' -NoNewWindow -PassThru
+$null = $p.Handle; $p.WaitForExit(); $p.ExitCode
+```
 
 ### UI (hosted by tray)
 
