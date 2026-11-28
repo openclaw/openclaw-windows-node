@@ -662,9 +662,34 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             ? CatalogPreference.IsChecked == true : (bool?)null;
         return RunAsync(async ct =>
         {
+            await ShareClaudeCliWithIsolatedGatewayAsync(row, ct);
             SelectChoice(row);
             await _controller!.StartSelectedAsync(key, catalogPreference, Render, ct);
         });
+    }
+
+    /// <summary>
+    /// An isolated Gateway cannot see Claude Code installed for the signed-in user. Choosing a Claude CLI
+    /// route shares that install and sign-in with the Gateway's agent before the Gateway probes it.
+    /// </summary>
+    private async Task ShareClaudeCliWithIsolatedGatewayAsync(ChoiceRow row, CancellationToken ct)
+    {
+        if (_args?.NativeSession is not { IsIsolated: true } native || !ClaudeCliAgentBridge.Applies(row.Kind, row.Id))
+            return;
+        ClaudeCliShareResult shared;
+        try { shared = await native.ShareClaudeCliAsync(ct); }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            // Sharing is a convenience. Without it the Gateway reports what it is missing.
+            Trace.TraceWarning("Claude Code could not be shared with the isolated Gateway ({0}).", error.GetType().Name);
+            return;
+        }
+        if (shared != ClaudeCliShareResult.SharedRestartRequired)
+            return;
+        // A running Gateway keeps the PATH it started with, and its restart invalidates these choices.
+        if ((_nativeConnection ?? _prepared?.Transport as NativeGatewaySetupConnection) is { } connection)
+            await connection.RestartAsync(ct);
+        await DetectAsync(ct);
     }
 
     private void ApiKeyFields_SizeChanged(object sender, SizeChangedEventArgs e)
