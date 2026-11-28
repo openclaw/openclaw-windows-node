@@ -20,6 +20,8 @@ public sealed class GatewayAiSetupClient(
     private GatewayAiSetupDetection? _before;
     private string? _expectedModel;
     private bool _hasActivationReceipt;
+    // The owned wizard settled with a Gateway error that carried no activation receipt or rejection.
+    private bool _settledWithoutReceipt;
     private readonly SetupCompletionIntent _configuredCompletionIntent = configuredCompletionIntent;
     private SetupCompletionIntent _completionIntent = configuredCompletionIntent;
     private bool _requiresManagedLocalAi;
@@ -230,6 +232,7 @@ public sealed class GatewayAiSetupClient(
         _expectedModel = choice.ModelRef;
         _attemptGeneration = transport.Generation;
         _hasActivationReceipt = false;
+        _settledWithoutReceipt = false;
         GatewayRestartRequired = false;
         Wizard = null;
         Phase = GatewayAiSetupPhase.Uncertain;
@@ -255,6 +258,13 @@ public sealed class GatewayAiSetupClient(
             throw new InvalidOperationException("There is no owned setup session to refresh.");
         if (Phase is not (GatewayAiSetupPhase.Running or GatewayAiSetupPhase.Uncertain))
             throw new InvalidOperationException("The setup session is already settled.");
+        if (_settledWithoutReceipt)
+        {
+            if (await TryReleaseSettledErrorAsync(ct))
+                return;
+            if (_expectedModel is null || transport.Generation == _attemptGeneration)
+                throw new InvalidOperationException(SavedSetupChanged);
+        }
         if (transport.Generation != _attemptGeneration && _expectedModel is not null)
         {
             Phase = GatewayAiSetupPhase.Uncertain;
@@ -288,6 +298,12 @@ public sealed class GatewayAiSetupClient(
         EnsureAuthorized();
         if (SessionId is null)
             throw new InvalidOperationException("The activation outcome must be reconciled; it has no cancellable wizard.");
+        if (_settledWithoutReceipt)
+        {
+            if (!await TryReleaseSettledErrorAsync(ct))
+                throw new InvalidOperationException(SavedSetupChanged);
+            return;
+        }
         EnsureMethod("wizard.cancel");
         var generation = transport.Generation;
         var operation = ++_operation;
@@ -303,6 +319,31 @@ public sealed class GatewayAiSetupClient(
             SessionId = null;
             Wizard = null;
         }
+    }
+
+    private const string SavedSetupChanged =
+        "The saved AI setup changed during this attempt. Do not start another setup operation.";
+
+    /// <summary>
+    /// Settles an attempt whose wizard ended with an unclassified Gateway error. The Gateway returns a
+    /// terminal result only after its runner stopped and the session was purged, so neither wizard.next
+    /// nor wizard.cancel can reach it again. The saved setup is then the authoritative outcome. The
+    /// attempt is released as rejected only when setup was incomplete before it and still is: no route
+    /// was promoted. As with an explicit rejection, this claims nothing about saved credentials. An
+    /// attempt made while a route was already configured stays uncertain, because an unchanged model
+    /// name cannot show whether that route was rewritten.
+    /// </summary>
+    private async Task<bool> TryReleaseSettledErrorAsync(CancellationToken ct)
+    {
+        var after = await ExecuteAsync<GatewayAiSetupDetection>("openclaw.setup.detect", RouteParams(), 40_000, ct);
+        ValidateDetection(after);
+        if (_before is not { SetupComplete: false } || after.SetupComplete ||
+            after.ConfiguredModel != _before.ConfiguredModel)
+            return false;
+        _settledWithoutReceipt = false;
+        Phase = GatewayAiSetupPhase.Rejected;
+        SessionId = null;
+        return true;
     }
 
     /// <summary>Explicitly verifies an already selected configured route, without activation.</summary>
@@ -373,6 +414,7 @@ public sealed class GatewayAiSetupClient(
     {
         Phase = GatewayAiSetupPhase.Uncertain;
         Wizard = result;
+        _settledWithoutReceipt = false;
         if (!result.Done)
         {
             if (result.Status is not (null or "running") || result.ModelActivation is not null ||
@@ -415,7 +457,13 @@ public sealed class GatewayAiSetupClient(
             return;
         }
         Phase = GatewayAiSetupPhase.Uncertain;
-        throw new InvalidDataException("Setup ended without an authoritative activation outcome.");
+        // A settled error without an accepted rejection can follow committed writes, so the attempt
+        // stays uncertain until the saved route is read back. Its Gateway-reported cause is still the
+        // only actionable diagnostic.
+        _settledWithoutReceipt = result is { Status: "error", ModelActivation: null, PreparedModelRef: null,
+            ActivationRejection: null };
+        throw new InvalidDataException(result.Status == "error" && !string.IsNullOrWhiteSpace(result.Error)
+            ? result.Error : "Setup ended without an authoritative activation outcome.");
     }
 
     private void ApplyActivation(GatewayAiSetupActivation result)
@@ -432,7 +480,8 @@ public sealed class GatewayAiSetupClient(
     {
         if (activation.ModelTarget is not null)
             throw new InvalidDataException("The gateway activated a utility model, not the selected main assistant.");
-        if (_expectedModel is not null && _expectedModel != activation.ModelRef)
+        if (_expectedModel is not null && _expectedModel != activation.ModelRef &&
+            !IsCanonicalRouteOfSelectedRuntime(activation.ModelRef))
             throw new InvalidDataException("The gateway activated a different model than the selected route.");
         _expectedModel = activation.ModelRef;
         _hasActivationReceipt = true;
@@ -440,6 +489,24 @@ public sealed class GatewayAiSetupClient(
         // Even a live activation receipt needs verification on the current route.
         Phase = GatewayAiSetupPhase.VerificationRequired;
         SessionId = null;
+    }
+
+    // The Gateway's Claude CLI runtime and the provider it saves that runtime's models under.
+    private const string ClaudeCliRuntime = "claude-cli";
+    private const string ClaudeCliCanonicalProvider = "anthropic";
+
+    /// <summary>
+    /// The Gateway offers its Claude CLI runtime as candidate kind "claude-cli" with model
+    /// "claude-cli/x" and saves it under that runtime's canonical provider as "anthropic/x". That
+    /// receipt names the selected model, not another one. Every other route must match exactly.
+    /// </summary>
+    private bool IsCanonicalRouteOfSelectedRuntime(string activatedModelRef)
+    {
+        const string runtimePrefix = ClaudeCliRuntime + "/";
+        const string canonicalPrefix = ClaudeCliCanonicalProvider + "/";
+        return Selection is { Kind: GatewayAiSetupChoiceKind.Candidate, Id: ClaudeCliRuntime, ModelRef: { } selected } &&
+            selected.Length > runtimePrefix.Length && selected.StartsWith(runtimePrefix, StringComparison.Ordinal) &&
+            activatedModelRef == canonicalPrefix + selected[runtimePrefix.Length..];
     }
 
     private static bool IsRejection(GatewayAiSetupActivationRejection? rejection) =>
