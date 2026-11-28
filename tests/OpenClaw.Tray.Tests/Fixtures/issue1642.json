@@ -1,0 +1,557 @@
+{
+  "status": "planned-not-executed",
+  "notes": [
+    "Fixtures are independent desired outcomes, not an executable selector.",
+    "Map metadata into real owner tests; separately prove env opt-in forwarding.",
+    "Compatible booleans are pipeline seam inputs; backend tests must validate actual architecture asset matching.",
+    "All asset URLs are deliberately non-downloadable.",
+    "Preserve stable backend-success fast path and Store/Dev/Debug skips with existing tests.",
+    "Check unknown/empty/mixed-case channel semantics against existing opt-in contract before implementation."
+  ],
+  "cases": [
+    {
+      "name": "same-series-93-97",
+      "current": "2026.9.5-alpha.93",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.97",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.97-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.97-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.5-alpha.97"
+    },
+    {
+      "name": "numeric-9-10",
+      "current": "2026.9.5-alpha.9",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.10",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.10-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.10-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.5-alpha.10"
+    },
+    {
+      "name": "cross-base",
+      "current": "2026.9.5-alpha.117",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.8-alpha.1",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.8-alpha.1-x64",
+            "name": "OpenClawTray-2026.9.8-alpha.1-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.8-alpha.1"
+    },
+    {
+      "name": "unsorted-choose-greatest",
+      "current": "2026.9.5-alpha.9",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.10",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.10-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.10-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "v2026.9.5-alpha.117",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.117-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.117-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "v2026.9.5-alpha.97",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.97-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.97-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.5-alpha.117"
+    },
+    {
+      "name": "incompatible-highest",
+      "current": "2026.9.5-alpha.9",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.117",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "arm-only",
+            "name": "OpenClawTray-2026.9.5-alpha.117-win-arm64.zip",
+            "compatible": false,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "v2026.9.5-alpha.97",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.97-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.97-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.5-alpha.97"
+    },
+    {
+      "name": "lower-vendor-stable-must-not-short-circuit",
+      "current": "2026.9.5-alpha.97",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.8-1",
+          "prerelease": false,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.8-1-x64",
+            "name": "OpenClawTray-2026.9.8-1-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "v2026.9.9-alpha.2",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.9-alpha.2-x64",
+            "name": "OpenClawTray-2026.9.9-alpha.2-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.9-alpha.2",
+      "backendFound": true,
+      "backendSelectedTag": "v2026.9.8-1"
+    },
+    {
+      "name": "final-after-same-base-alpha",
+      "current": "2026.9.5-alpha.117",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5",
+          "prerelease": false,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-x64",
+            "name": "OpenClawTray-2026.9.5-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.5"
+    },
+    {
+      "name": "stable-correction-numeric",
+      "current": "2026.9.5-9",
+      "channel": "stable",
+      "releases": [
+        {
+          "tag": "v2026.9.5-10",
+          "prerelease": false,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-10-x64",
+            "name": "OpenClawTray-2026.9.5-10-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.5-10"
+    },
+    {
+      "name": "stable-excludes-alpha",
+      "current": "2026.9.5",
+      "channel": "stable",
+      "releases": [
+        {
+          "tag": "v2026.9.8-alpha.1",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.8-alpha.1-x64",
+            "name": "OpenClawTray-2026.9.8-alpha.1-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": null
+    },
+    {
+      "name": "unset-excludes-alpha",
+      "current": "2026.9.5",
+      "channel": null,
+      "releases": [
+        {
+          "tag": "v2026.9.8-alpha.1",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.8-alpha.1-x64",
+            "name": "OpenClawTray-2026.9.8-alpha.1-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": null
+    },
+    {
+      "name": "unsupported-channel-does-not-opt-in",
+      "current": "2026.9.5",
+      "channel": "canary",
+      "releases": [
+        {
+          "tag": "v2026.9.8-alpha.1",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.8-alpha.1-x64",
+            "name": "OpenClawTray-2026.9.8-alpha.1-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": null
+    },
+    {
+      "name": "equal-or-older-alpha-reject",
+      "current": "2026.9.5-alpha.97",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.97",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.97-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.97-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "v2026.9.5-alpha.93",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.93-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.93-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": null
+    },
+    {
+      "name": "alpha-before-same-base-final",
+      "current": "2026.9.5",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.117",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.117-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.117-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": null
+    },
+    {
+      "name": "invalid-release-metadata",
+      "current": "2026.9.5-alpha.9",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.117",
+          "prerelease": true,
+          "draft": true,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.117-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.117-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "v2026.9.5-alpha.116",
+          "prerelease": true,
+          "draft": false,
+          "published": false,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.116-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.116-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "v2026.9.5-alpha.0117",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.0117-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.0117-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "v2026.9.5-beta.2",
+          "prerelease": false,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-beta.2-x64",
+            "name": "OpenClawTray-2026.9.5-beta.2-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "not-a-version",
+          "prerelease": false,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "not-a-version-x64",
+            "name": "OpenClawTray-not-a-version-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        },
+        {
+          "tag": "v2026.9.5-alpha.10",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.10-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.10-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.5-alpha.10"
+    },
+    {
+      "name": "security-selected-metadata",
+      "current": "2026.9.5-alpha.93",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.97",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: security-critical -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.97-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.97-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.5-alpha.97",
+      "gatewayChannel": "extended-stable",
+      "expectedSuppressed": false,
+      "expectedClassification": "Security"
+    },
+    {
+      "name": "ordinary-extended-stable-preserved",
+      "current": "2026.9.5-alpha.93",
+      "channel": "alpha",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.97",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.97-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.97-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": "v2026.9.5-alpha.97",
+      "gatewayChannel": "extended-stable",
+      "expectedSuppressed": true,
+      "expectedClassification": "Ordinary"
+    },
+    {
+      "name": "installed-alpha-unset-is-not-opt-in",
+      "current": "2026.9.5-alpha.93",
+      "channel": null,
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.97",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.97-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.97-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": null
+    },
+    {
+      "name": "installed-alpha-stable-is-not-opt-in",
+      "current": "2026.9.5-alpha.93",
+      "channel": "stable",
+      "releases": [
+        {
+          "tag": "v2026.9.5-alpha.97",
+          "prerelease": true,
+          "draft": false,
+          "published": true,
+          "trustedMetadata": true,
+          "body": "<!-- openclaw-update: ordinary -->",
+          "asset": {
+            "id": "v2026.9.5-alpha.97-x64",
+            "name": "OpenClawTray-2026.9.5-alpha.97-win-x64.zip",
+            "compatible": true,
+            "url": "https://example.invalid/no-download"
+          }
+        }
+      ],
+      "expectedSelectedTag": null
+    }
+  ]
+}

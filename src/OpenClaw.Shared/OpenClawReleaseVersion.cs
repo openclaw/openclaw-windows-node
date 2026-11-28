@@ -14,6 +14,32 @@ public readonly record struct OpenClawReleaseVersion(
         RegexOptions.CultureInvariant,
         TimeSpan.FromSeconds(1));
 
+    private static readonly Regex AlphaVersionPattern = new(
+        @"^(?<base>v?(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))-alpha\.(?<alpha>0|[1-9]\d*)$",
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(1));
+
+    public int? Alpha { get; init; }
+
+    public static bool TryParse(string? value, out OpenClawReleaseVersion version)
+    {
+        if (TryParseStable(value, out version))
+            return true;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var match = AlphaVersionPattern.Match(value.Trim());
+        if (!match.Success ||
+            !TryParseStable(match.Groups["base"].Value, out var stable) ||
+            !TryParseComponent(match.Groups["alpha"].Value, out var alpha))
+        {
+            return false;
+        }
+
+        version = stable with { Alpha = alpha };
+        return true;
+    }
+
     public static bool TryParseStable(string? value, out OpenClawReleaseVersion version)
     {
         version = default;
@@ -57,7 +83,17 @@ public readonly record struct OpenClawReleaseVersion(
             return month;
 
         var patch = Patch.CompareTo(other.Patch);
-        return patch != 0 ? patch : Correction.CompareTo(other.Correction);
+        if (patch != 0)
+            return patch;
+
+        var correction = Correction.CompareTo(other.Correction);
+        if (correction != 0)
+            return correction;
+
+        // The final release follows all alphas of the same base version.
+        if (Alpha is null)
+            return other.Alpha is null ? 0 : 1;
+        return other.Alpha is null ? -1 : Alpha.Value.CompareTo(other.Alpha.Value);
     }
 
     private static bool TryParseComponent(string value, out int component)

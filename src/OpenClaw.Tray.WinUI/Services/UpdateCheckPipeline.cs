@@ -145,39 +145,65 @@ internal static class GatewayUpdateStatusLookup
 
 internal static class UpdateCheckPipeline
 {
+    internal static bool IsAlphaChannelEnabled => string.Equals(
+        Environment.GetEnvironmentVariable("OPENCLAW_UPDATE_CHANNEL")?.Trim(),
+        "alpha",
+        StringComparison.OrdinalIgnoreCase);
+
     public static async Task<UpdateCheckOutcome> CheckAsync(
         IUpdateCheckBoundary boundary,
         string currentVersion)
     {
         ArgumentNullException.ThrowIfNull(boundary);
 
-        if (await boundary.CheckForUpdatesAsync())
+        var allowAlpha = IsAlphaChannelEnabled;
+        var backendFound = await boundary.CheckForUpdatesAsync();
+        if (backendFound && !allowAlpha)
         {
             return new UpdateCheckOutcome(
                 UpdateFound: true,
                 SelectedRelease: boundary.GetSelectedRelease());
         }
 
+        if (!OpenClawReleaseVersion.TryParse(currentVersion, out var current))
+            return new UpdateCheckOutcome(UpdateFound: false);
+
+        UpdateReleaseCandidate? selected = null;
+        var selectedVersion = current;
         foreach (var release in boundary.GetReleaseCandidates())
         {
             if (release.Draft ||
-                release.Prerelease ||
+                (!allowAlpha && release.Prerelease) ||
                 !release.Published ||
-                !OpenClawReleaseVersion.IsNewerStableRelease(
-                    release.TagName,
-                    currentVersion) ||
+                !OpenClawReleaseVersion.TryParse(release.TagName, out var version) ||
+                (!allowAlpha && version.Alpha is not null) ||
+                version.CompareTo(selectedVersion) <= 0 ||
                 !release.HasCompatibleAsset())
             {
                 continue;
             }
 
-            release.Activate();
-            return new UpdateCheckOutcome(
-                UpdateFound: true,
-                SelectedRelease: release,
-                ActivatedFallbackTag: release.TagName);
+            selected = release;
+            selectedVersion = version;
         }
 
-        return new UpdateCheckOutcome(UpdateFound: false);
+        if (selected is null)
+            return new UpdateCheckOutcome(UpdateFound: false);
+
+        if (backendFound && string.Equals(
+                selected.TagName,
+                boundary.GetSelectedRelease()?.TagName,
+                StringComparison.Ordinal))
+        {
+            return new UpdateCheckOutcome(UpdateFound: true, SelectedRelease: selected);
+        }
+
+        // Updatum orders System.Version values, which drop alpha/correction suffixes.
+        // Activate our exact winner so its metadata, download and install agree.
+        selected.Activate();
+        return new UpdateCheckOutcome(
+            UpdateFound: true,
+            SelectedRelease: selected,
+            ActivatedFallbackTag: selected.TagName);
     }
 }
