@@ -1,3 +1,4 @@
+using System.Net.NetworkInformation;
 using OpenClawTray.Services;
 using Zeroconf;
 
@@ -53,6 +54,79 @@ public class GatewayDiscoveryServiceTests
 
         Assert.NotNull(gateway);
         Assert.Equal("gateway.local", gateway!.Host);
+        Assert.Equal("ws://gateway.local:18789", gateway.ConnectionUrl);
+    }
+
+    [Fact]
+    public void ParseHost_BracketsIpv6Address()
+    {
+        var host = new TestZeroconfHost
+        {
+            DisplayName = "Kitchen Gateway",
+            IPAddress = "::1",
+            Services = new Dictionary<string, IService>
+            {
+                ["_openclaw-gw._tcp.local."] = new TestService { Port = 18789 }
+            }
+        };
+
+        var gateway = GatewayDiscoveryService.ParseHost(host);
+
+        Assert.NotNull(gateway);
+        Assert.Equal("::1", gateway!.Host);
+        Assert.Equal("ws://[::1]:18789", gateway.ConnectionUrl);
+    }
+
+    [Fact]
+    public void ParseHost_DropsADisplayNameThatIsNotAHost()
+    {
+        var host = new TestZeroconfHost
+        {
+            DisplayName = "Kitchen Gateway",
+            IPAddress = "",
+            Services = new Dictionary<string, IService>
+            {
+                ["_openclaw-gw._tcp.local."] = new TestService { Port = 18789 }
+            }
+        };
+
+        Assert.Null(GatewayDiscoveryService.ParseHost(host));
+    }
+
+    [Fact]
+    public void CanQueryAdapter_SkipsAnAdapterWhoseIPv4PropertiesThrow()
+    {
+        Assert.False(GatewayDiscoveryService.CanQueryAdapter(
+            supportsMulticast: true,
+            status: OperationalStatus.Up,
+            type: NetworkInterfaceType.Ethernet,
+            hasIPv4Properties: () => throw new NetworkInformationException(10043)));
+    }
+
+    [Fact]
+    public void CanQueryAdapter_AcceptsAnUpMulticastAdapterWithIPv4()
+    {
+        Assert.True(GatewayDiscoveryService.CanQueryAdapter(
+            supportsMulticast: true,
+            status: OperationalStatus.Up,
+            type: NetworkInterfaceType.Wireless80211,
+            hasIPv4Properties: () => true));
+    }
+
+    [Theory]
+    [InlineData(false, OperationalStatus.Up, NetworkInterfaceType.Ethernet)]
+    [InlineData(true, OperationalStatus.Down, NetworkInterfaceType.Ethernet)]
+    [InlineData(true, OperationalStatus.Up, NetworkInterfaceType.Loopback)]
+    public void CanQueryAdapter_RejectsAdaptersTheResolverWouldSkip(
+        bool supportsMulticast,
+        OperationalStatus status,
+        NetworkInterfaceType type)
+    {
+        Assert.False(GatewayDiscoveryService.CanQueryAdapter(
+            supportsMulticast,
+            status,
+            type,
+            hasIPv4Properties: () => true));
     }
 
     private sealed class TestZeroconfHost : IZeroconfHost
