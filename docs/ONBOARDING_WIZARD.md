@@ -3,6 +3,24 @@
 The onboarding wizard can install an app-owned WSL gateway, acquire a native
 Gateway MSIX through Microsoft Store and configure it, or connect to an existing gateway.
 
+AI connection setup opens with **Get OpenClaw thinking.** and two presentation
+paths: **Connect an AI account** and **Use a local model**. The account path
+retains detected account access, featured and additional sign-in options, custom
+providers, and the full account API-key picker. API-key entry opens only when
+requested, including when discovery finds no usable access. The model path
+retains detected model services and the existing Windows-managed Local AI
+setup and recovery actions. Model-service endpoints may be on another computer.
+Unknown providers remain accessible under accounts rather than being classified
+from their display labels.
+
+Choosing a path or returning to the two choices does not repeat discovery or
+start provider setup, activation, installation, or cancellation. Leaving a path
+clears manual credential input. Refresh keeps the selected path and uses the
+existing discovery flow. Active or unconfirmed operations block path changes;
+configured-model verification and already-consented Local AI continuations do
+not require choosing a path. Gateway routing, consent, runtime ownership,
+exact-model verification, and completion behavior retain their existing owners.
+
 Native Local AI setup displays the current phase and completed steps while checking
 GPU readiness, verifying cached runtime/model files, starting the model, publishing
 the provider, reconnecting and testing real Gateway inference. File verification

@@ -10309,4 +10309,12 @@
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>追蹤此對話中委派的工作。</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此工作階段發布的小工具和索引標籤。</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此對話尚無可用的面板。</value></data>
+  <data name="Onboarding_AiSetup_PathTitle" xml:space="preserve"><value>讓 OpenClaw 開始思考。</value></data>
+  <data name="Onboarding_AiSetup_PathDetail" xml:space="preserve"><value>選擇如何連線 AI。</value></data>
+  <data name="Onboarding_AiSetup_AccountPath" xml:space="preserve"><value>連線 AI 帳戶</value></data>
+  <data name="Onboarding_AiSetup_AccountPathDetail" xml:space="preserve"><value>使用現有登入、連線供應商或輸入 API 金鑰。</value></data>
+  <data name="Onboarding_AiSetup_LocalModelPath" xml:space="preserve"><value>使用本機模型</value></data>
+  <data name="Onboarding_AiSetup_LocalModelPathDetail" xml:space="preserve"><value>使用偵測到的模型服務，或查看此電腦上的本機 AI 設定。模型服務可能在另一台電腦上執行。</value></data>
+  <data name="Onboarding_AiSetup_BackToPaths" xml:space="preserve"><value>返回 AI 選項</value></data>
+  <data name="Onboarding_AiSetup_MoreModelServices" xml:space="preserve"><value>更多模型服務選項</value></data>
 </root>

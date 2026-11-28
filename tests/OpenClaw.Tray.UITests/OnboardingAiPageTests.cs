@@ -22,6 +22,46 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
 {
     private bool _nativeProof;
 
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
+    public async Task ConnectionPaths_NavigateWithoutActivationAndKeepCredentialsExplicit(ElementTheme theme)
+    {
+        var local = new PageLocalAiHost(LocalAiOnboardingState.Use);
+        await WithPageAsync(async (page, transport, completed) =>
+        {
+            Assert.Equal("Get OpenClaw thinking.", Find<TextBlock>(page, "TitleText").Text);
+            Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ConnectionPathChoices").Visibility);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "PathContent").Visibility);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ApiKeyForm").Visibility);
+            await SelectPathAsync(page, AiSetupConnectionPath.Account);
+            Assert.Equal("Connect an AI account", Find<TextBlock>(page, "TitleText").Text);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "LocalAiSection").Visibility);
+            await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
+            Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex = 0;
+            Find<PasswordBox>(page, "ApiKeyInput").Password = "synthetic-navigation-never-submitted";
+            await BackToPathsAsync(page);
+            Assert.Equal("", Find<PasswordBox>(page, "ApiKeyInput").Password);
+            await SelectPathAsync(page, AiSetupConnectionPath.LocalModel);
+            Assert.Equal("Use a local model", Find<TextBlock>(page, "TitleText").Text);
+            Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "LocalAiSection").Visibility);
+            Assert.Empty(Find<ItemsControl>(page, "CandidateChoices").Items);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ApiKeySection").Visibility);
+            await BackToPathsAsync(page);
+            await SelectPathAsync(page, AiSetupConnectionPath.Account);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ApiKeyForm").Visibility);
+            transport.EmptyCandidates = true;
+            Invoke(Find<Button>(page, "RefreshButton"));
+            await TestSupport.WaitForRenderedConditionAsync(() => transport.MethodCalls.Count == 2 &&
+                Find<Button>(page, "RefreshButton").IsEnabled, "account rediscovery finished");
+            Assert.Equal("Connect an AI account", Find<TextBlock>(page, "TitleText").Text);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ApiKeyForm").Visibility);
+            Assert.Equal(["openclaw.setup.detect", "openclaw.setup.detect"], transport.MethodCalls);
+            Assert.Equal(0, local.Actions);
+            Assert.Equal(0, completed());
+        }, localAiHost: local, entryPath: AiSetupConnectionPath.Choice, theme: theme);
+    }
+
     [Fact]
     public async Task AiGroups_KeepManualInputSeparateFromAuthenticationInTheMountedPage()
     {
@@ -63,7 +103,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.False(Find<Button>(page, "ApiKeyConnectButton").IsEnabled);
             Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
             Assert.Equal(0, completed());
-        }, configure: transport => transport.IncludeDensityChoices = true,
+        }, configure: transport => transport.IncludeDensityChoices = true, entryPath: AiSetupConnectionPath.Account,
             localAiHost: new PageLocalAiHost(LocalAiOnboardingState.Use));
 
         static bool ContainsVisual(DependencyObject owner, DependencyObject element)
@@ -97,7 +137,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.DoesNotContain(transport.MethodCalls, method =>
                 method is "openclaw.setup.activate.start" or "openclaw.setup.prepare.start" or "wizard.start");
             Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ApiKeyForm").Visibility);
-        }, configure: transport => transport.IncludeMoreProvider = true, localAiHost: local);
+        }, configure: transport => transport.IncludeMoreProvider = true, localAiHost: local, entryPath: AiSetupConnectionPath.Account);
     }
 
     [Fact]
@@ -225,16 +265,16 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 OnboardingNativeProof.ActivateOwned(window);
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
                 await WaitAsync(() => Find<ItemsControl>(page, "FeaturedSignInChoices").Items.Count == 2 &&
-                    Find<SettingsCard>(page, "LocalAiCard").IsClickEnabled);
+                    Find<StackPanel>(page, "ConnectionPathChoices").Visibility == Visibility.Visible);
+                await SelectPathAsync(page, AiSetupConnectionPath.Account);
                 root.UpdateLayout();
                 await OnboardingNativeProof.NextCompositionAsync();
                 var scroll = Find<ScrollViewer>(page, "ChoicesScroller");
                 var header = Find<StackPanel>(page, "AiHeader");
-                var rows = new[] { Find<SettingsCard>(page, "LocalAiCard") }
-                    .Concat(new[] { "CandidateChoices", "PrepareChoices", "FeaturedSignInChoices" }
-                        .SelectMany(name => TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(page, name))))
+                var rows = new[] { "CandidateChoices", "PrepareChoices", "FeaturedSignInChoices" }
+                    .SelectMany(name => TestSupport.FindDescendants<SettingsCard>(Find<ItemsControl>(page, name)))
                     .Append(Find<SetupActionCard>(page, "ApiKeysButton")).ToArray();
-                Assert.Equal(6, rows.Length);
+                Assert.Equal(5, rows.Length);
                 var textScale = new Windows.UI.ViewManagement.UISettings().TextScaleFactor;
                 Assert.Equal(defaultSize, window.AppWindow.Size);
                 Assert.Equal(0, NativeProofLayout.PhysicalPixels(scroll.ScrollableWidth, root.XamlRoot.RasterizationScale));
@@ -247,7 +287,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 OnboardingNativeProof.AssertFullyVisible(header, root);
                 Assert.Empty(TestSupport.FindDescendants<ListViewItem>(scroll));
                 using (await OnboardingNativeProof.CaptureAsync(window, $"ai-focused-default-{theme}", output,
-                    ["Set up your AI", "Local AI", "Refresh"],
+                    ["Connect an AI account", "Refresh"],
                     new { textScale, defaultSize, headerHeight = header.ActualHeight,
                         scroll.ViewportHeight, scroll.ExtentHeight, rowHeights = rows.Select(row => row.ActualHeight).ToArray() },
                     requiredContent: page)) { }
@@ -257,7 +297,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     await TestSupport.WaitForRenderedConditionAsync(
                         () => Math.Abs(scroll.VerticalOffset - scroll.ScrollableHeight) < 0.5, "AI last viewport");
                     using (await OnboardingNativeProof.CaptureAsync(window, $"ai-focused-default-{theme}-last", output,
-                        ["Set up your AI", "API Keys", "Refresh"], new { textScale, scroll.VerticalOffset },
+                        ["Connect an AI account", "API Keys", "Refresh"], new { textScale, scroll.VerticalOffset },
                         requiredContent: page)) { }
                 }
                 Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
@@ -517,7 +557,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             void AssertBackdrop()
             {
                 Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ChoicePanel").Visibility);
-                Assert.Equal("Set up your AI", Find<TextBlock>(page, "TitleText").Text);
+                Assert.Equal("Connect an AI account", Find<TextBlock>(page, "TitleText").Text);
                 Assert.Equal(subtitle, Find<TextBlock>(page, "StatusText").Text);
                 Assert.Same(candidates, Find<ItemsControl>(page, "CandidateChoices").ItemsSource);
                 Assert.Same(selected, picker.SelectedItem);
@@ -528,6 +568,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 Assert.False(Find<ItemsControl>(page, "CandidateChoices").IsEnabled);
                 Assert.False(Find<Button>(page, "RefreshButton").IsEnabled);
                 Assert.False(Find<Button>(page, "ApiKeyConnectButton").IsEnabled);
+                AssertPathNavigationDisabled(page);
                 Assert.Same(dialog, GetDialog(page));
             }
         }, theme: theme, width: width, configure: transport =>
@@ -553,6 +594,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(page, "ProviderActivityStatus").Text));
             var sessionId = transport.LastActivation.GetProperty("sessionId").GetString();
             Assert.False(string.IsNullOrWhiteSpace(sessionId));
+            AssertPathNavigationDisabled(page);
             var close = page.CloseAsync();
             await close;
             Assert.Same(close, page.CloseAsync());
@@ -614,18 +656,18 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             await WaitAsync(() => cancel.Visibility == Visibility.Visible && cancel.IsEnabled);
             Assert.False(Assert.IsType<ScrollViewer>(GetDialog(page).Content).IsLoaded);
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-loading-{theme}", output,
-                ["Set up your AI", "Synthetic provider loading", "Cancel"], requiredContent: page)) { }
+                ["Connect an AI account", "Synthetic provider loading", "Cancel"], requiredContent: page)) { }
             typeof(AiSetupPage).GetMethod("ShowError", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
                 .Invoke(page, ["Failed", null]);
             Assert.True(Find<InfoBar>(page, "ProviderActivityError").IsOpen);
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-inline-error-{theme}", output,
-                ["Set up your AI", "Cancel"], requiredContent: page)) { }
+                ["Connect an AI account", "Cancel"], requiredContent: page)) { }
             Invoke(cancel);
             await WaitAsync(() => Find<Button>(page, "RefreshButton").IsEnabled);
             Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ProviderActivity").Visibility);
             Assert.Equal(1, transport.MethodCalls.Count(method => method == "wizard.cancel"));
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"followup-provider-cancelled-{theme}", output,
-                ["Set up your AI", "Refresh"], requiredContent: page)) { }
+                ["Connect an AI account", "Refresh"], requiredContent: page)) { }
             transport.WizardStep = new()
             {
                 Id = "synthetic-input", Type = "text", Executor = "client",
@@ -675,16 +717,17 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
-    public async Task EmptyDetection_ShowsInlineKeyFormWithoutSelectingOrTesting()
+    public async Task EmptyDetection_KeepsKeyFormCollapsedUntilRequested()
     {
-        await WithPageAsync((page, transport, completed) =>
+        await WithPageAsync(async (page, transport, completed) =>
         {
-            Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ApiKeyForm").Visibility);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ApiKeyForm").Visibility);
+            await InvokeCardAsync(Find<SetupActionCard>(page, "ApiKeysButton"));
+            await WaitAsync(() => Find<StackPanel>(page, "ApiKeyForm").Visibility == Visibility.Visible);
             Assert.Equal(-1, Find<ComboBox>(page, "ApiProviderPicker").SelectedIndex);
             Assert.False(Find<Button>(page, "ApiKeyConnectButton").IsEnabled);
             Assert.Single(transport.MethodCalls);
             Assert.Equal(0, completed());
-            return Task.CompletedTask;
         }, configure: transport => transport.EmptyCandidates = true);
     }
 
@@ -1027,6 +1070,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             var cancel = Assert.IsType<Button>(dialog.FindName("CancelButton"));
             Invoke(cancel);
             await WaitAsync(() => transport.MethodCalls.Contains("wizard.cancel") && dialog.IsSecondaryButtonEnabled);
+            AssertPathNavigationDisabled(page);
             Assert.False(dialog.CanSubmit);
             Assert.True(cancel.IsEnabled);
             Assert.Equal(0, completed());
@@ -1271,7 +1315,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Equal(0, host.Actions);
             Assert.Equal(0, completed());
             return Task.CompletedTask;
-        }, localAiHost: host);
+        }, localAiHost: host, entryPath: AiSetupConnectionPath.Account);
     }
 
     [Theory]
@@ -1315,7 +1359,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 Assert.True(scroll.ViewportHeight >= 280, $"Actual AI body: {scroll.ViewportHeight} DIPs.");
             }
             Assert.Equal(0, NativeProofLayout.PhysicalPixels(scroll.ScrollableWidth, scale));
-            Assert.Equal("Connect an AI provider or model.", subtitle.Text);
+            Assert.Contains("Model services may run on another computer.", subtitle.Text);
             Assert.Equal(theme, page.ActualTheme);
             Assert.Equal(theme, heading.ActualTheme);
             OnboardingNativeProof.AssertFullyVisible(footer, root);
@@ -1337,7 +1381,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 NativeProofLayout.PhysicalPixels(pageBounds.Height, scale));
             using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow,
                 $"onboarding-ai-full-{state}-{theme}-local", output,
-                ["Set up your AI", "Refresh"],
+                ["Use a local model", "Refresh"],
                 new { state, theme, titleBounds = Bounds(heading), subtitleBounds = Bounds(subtitle),
                     heroBounds = Bounds(header), localBounds = Bounds(card), footerBounds = Bounds(footer),
                     headerHeight = header.ActualHeight, viewportHeight = scroll.ViewportHeight, textScale },
@@ -1345,6 +1389,8 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             var originalOffset = scroll.VerticalOffset;
             try
             {
+                await BackToPathsAsync(page);
+                await SelectPathAsync(page, AiSetupConnectionPath.Account);
                 foreach (var sectionName in new[] { "CandidatesSection", "ApiKeySection" })
                 {
                     var section = Find<StackPanel>(page, sectionName);
@@ -1363,7 +1409,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     OnboardingNativeProof.AssertFullyVisible(footer, root);
                     using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow,
                         $"onboarding-ai-full-{state}-{theme}-{sectionName}", output,
-                        sectionName == "CandidatesSection" ? ["Set up your AI", "Refresh"] : ["Set up your AI", "API Keys", "Refresh"],
+                        sectionName == "CandidatesSection" ? ["Connect an AI account", "Refresh"] : ["Connect an AI account", "API Keys", "Refresh"],
                         new { state, theme, sectionBounds = Bounds(label), footerBounds = Bounds(footer) },
                         requiredContent: page)) { }
                 }
@@ -1516,7 +1562,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             else
             {
                 Assert.Equal(["openclaw.setup.detect"], transport.MethodCalls);
-                Assert.Equal("Set up your AI", Find<TextBlock>(page, "TitleText").Text);
+                Assert.Equal("Use a local model", Find<TextBlock>(page, "TitleText").Text);
                 Assert.Contains("Start failed.", Find<InfoBar>(page, "ErrorBar").Message);
                 Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ChoicePanel").Visibility);
                 Assert.Contains("Repair", Find<TextBlock>(page, "LocalAiActionText").Text);
@@ -1540,7 +1586,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         await WithPageAsync(async (page, transport, completed) =>
         {
             await WaitAsync(() => host.Observations == 1);
-            Assert.Equal("Set up your AI", Find<TextBlock>(page, "TitleText").Text);
+            Assert.Equal("Use a local model", Find<TextBlock>(page, "TitleText").Text);
             Assert.False(intent.IsConsumed);
             Assert.Equal(0, host.Actions);
             transport.OperatorScopes = ["operator.admin"];
@@ -1562,7 +1608,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             await WaitAsync(() => host.Observations == 1 && Find<Button>(page, "RefreshButton").IsEnabled);
             var render = typeof(AiSetupPage).GetMethod("Render", BindingFlags.Instance | BindingFlags.NonPublic)!;
             render.Invoke(page, null);
-            Assert.Equal("Set up your AI", Find<TextBlock>(page, "TitleText").Text);
+            Assert.Equal("Use a local model", Find<TextBlock>(page, "TitleText").Text);
             var release = typeof(AiSetupPage).GetMethod("ReleaseAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
             await Assert.IsAssignableFrom<Task>(release.Invoke(page, [CancellationToken.None]));
             render.Invoke(page, null);
@@ -1792,6 +1838,8 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.DoesNotContain("openclaw.setup.verify", transport.MethodCalls);
             Assert.Equal(1, host.Actions);
             Assert.Equal(0, completed());
+            await BackToPathsAsync(page);
+            await SelectPathAsync(page, AiSetupConnectionPath.Account);
             var choices = Find<ItemsControl>(page, "CandidateChoices");
             choices.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
             choices.UpdateLayout();
@@ -1815,6 +1863,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         {
             await InvokeLocalAiAsync(page);
             await WaitAsync(() => Find<InfoBar>(page, "ErrorBar").IsOpen && Find<Button>(page, "RefreshButton").IsEnabled);
+            AssertPathNavigationDisabled(page);
             Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ChoicePanel").Visibility);
             Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "LocalAiSection").Visibility);
             Invoke(Find<Button>(page, "RefreshButton"));
@@ -1959,7 +2008,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             configured = transport;
             transport.HoldDetection = !prepared;
         }, ready: () => configured?.MethodCalls.Contains("openclaw.setup.detect") == true,
-            prepareDiscovery: prepared, loading: loading);
+            prepareDiscovery: prepared, loading: loading, entryPath: AiSetupConnectionPath.Choice);
     }
 
     [Theory]
@@ -2056,6 +2105,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     if (host.FailObservation)
                     {
                         host.FailObservation = false;
+                        await SelectPathAsync(ai, AiSetupConnectionPath.LocalModel);
                         await InvokeLocalAiAsync(ai);
                         Assert.Equal(2, host.Observations);
                     }
@@ -2312,7 +2362,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             await WaitAsync(() => transport.MethodCalls.Contains("openclaw.setup.activate.start"));
             Assert.False(Find<SettingsCard>(page, "LocalAiCard").IsClickEnabled);
             Assert.Equal(0, host.Actions);
-        }, localAiHost: host, reviewLocalAi: _ => throw new InvalidOperationException("Must settle provider first."));
+        }, localAiHost: host, entryPath: AiSetupConnectionPath.Account, reviewLocalAi: _ => throw new InvalidOperationException("Must settle provider first."));
     }
 
     private sealed class PageLocalAiHost(LocalAiOnboardingState state) : ISetupLocalAiHost, INativeSetupLocalAiHost
@@ -2399,7 +2449,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         string? expectedGatewayId = null, bool nativeProof = false, ElementTheme theme = ElementTheme.Light,
         double width = 720, LocalAiInstallAndUseIntent? installAndUse = null, Func<bool>? ready = null,
         Action<GatewayAiSetupCompletion>? completedProof = null, Action? closeSetupWindow = null,
-        bool prepareDiscovery = false, SetupLoadingProgress? loading = null)
+        bool prepareDiscovery = false, SetupLoadingProgress? loading = null, AiSetupConnectionPath? entryPath = null)
     {
         await ui.ResetContainerAsync();
         await ui.RunOnUIAsync(async () =>
@@ -2468,6 +2518,10 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     : Find<Button>(page, "LegacyButton").Visibility == Visibility.Visible);
                 ui.Container.UpdateLayout();
                 await ui.YieldToRenderAsync();
+                if (expectedModelRef is null && installAndUse is null && focusedSupported &&
+                    (entryPath ?? (localAiHost is null ? AiSetupConnectionPath.Account : AiSetupConnectionPath.LocalModel)) is var path &&
+                    path != AiSetupConnectionPath.Choice)
+                    await SelectPathAsync(page, path);
                 await assertion(page, transport, () => completions);
             }
             finally
@@ -2500,6 +2554,30 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         public int Disposals { get; private set; }
         public ValueTask DisposeAsync() { Disposals++; return ValueTask.CompletedTask; }
+    }
+
+    private static void AssertPathNavigationDisabled(AiSetupPage page)
+    {
+        Assert.False(Find<Button>(page, "PathBackButton").IsEnabled);
+        Assert.False(Find<SetupActionCard>(page, "AccountPathButton").IsEnabled);
+        Assert.False(Find<SetupActionCard>(page, "LocalModelPathButton").IsEnabled);
+    }
+
+    private async Task BackToPathsAsync(AiSetupPage page)
+    {
+        Invoke(Find<Button>(page, "PathBackButton"));
+        await TestSupport.WaitForRenderedConditionAsync(() =>
+            Find<StackPanel>(page, "ConnectionPathChoices").Visibility == Visibility.Visible, "AI path choices restored");
+    }
+
+    private async Task SelectPathAsync(AiSetupPage page, AiSetupConnectionPath path)
+    {
+        var card = Find<SetupActionCard>(page, path == AiSetupConnectionPath.Account ? "AccountPathButton" : "LocalModelPathButton");
+        await TestSupport.WaitForSettingsCardReadyAsync(page, card);
+        var peer = FrameworkElementAutomationPeer.CreatePeerForElement(card);
+        Assert.IsAssignableFrom<IInvokeProvider>(peer.GetPattern(PatternInterface.Invoke)).Invoke();
+        await TestSupport.WaitForRenderedConditionAsync(() =>
+            Find<StackPanel>(page, "PathContent").Visibility == Visibility.Visible, "selected AI path");
     }
 
     private async Task InvokeChoiceAsync(AiSetupPage page, string group = "CandidateChoices", int index = 0)
@@ -2692,7 +2770,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                             new { id = "two", label = "Second provider", featured = true } }
                         : new[] { new { id = "provider-login", label = "Synthetic sign-in", featured = false } }
                             .Take(IncludeMoreProvider ? 1 : 0).ToArray(),
-                    prepareOptions = new[] { new { id = "local-setup", label = "Local service", hint = "Set up and use" } }
+                    prepareOptions = new[] { new { id = "ollama", label = "Local service", hint = "Set up and use" } }
                         .Take(IncludeDensityChoices ? 1 : 0).ToArray(),
                     workspace = "/synthetic-workspace",
                     configuredModel = "openai/test-model",
