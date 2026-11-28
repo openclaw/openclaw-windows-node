@@ -13,6 +13,21 @@ public class CredentialResolverTests
         _resolver = new CredentialResolver(_mockReader);
     }
 
+    [Fact]
+    public void PersonalOperatorIgnoresStoredOperatorCredentialsAndPreservesNodeResolution()
+    {
+        var record = new GatewayRecord { Id = "personal", Url = "wss://fixture.example.ts.net",
+            OperatorAuthentication = OperatorAuthenticationMode.PersonalTailscale,
+            SharedGatewayToken = "shared", BootstrapToken = "bootstrap" };
+        _mockReader.OperatorReadResult = DeviceTokenReadResult.Corrupt("must not be used");
+        _mockReader.NodeToken = "node-token";
+        var personal = Assert.IsType<GatewayCredential>(_resolver.ResolveOperator(record, "/fixture"));
+        Assert.Empty(personal.Token);
+        Assert.Equal(OperatorAuthenticationMode.PersonalTailscale, personal.OperatorAuthentication);
+        Assert.Equal("node-token", _resolver.ResolveNode(record, "/fixture")!.Token);
+        Assert.Equal("shared", record.SharedGatewayToken);
+    }
+
     // ─── Operator resolution ───
 
     [Fact]

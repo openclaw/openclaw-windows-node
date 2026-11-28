@@ -55,7 +55,7 @@ internal sealed record WindowManagerCallbacks(
 /// Coordinates every application-owned window and transitions between workspace, onboarding and setup UI.
 /// Callers interact through <see cref="IWindowManager"/> so this class retains lifetime ownership.
 /// </summary>
-internal sealed class WindowManager : IWindowManager
+internal sealed partial class WindowManager : IWindowManager
 {
     private const string ShuttingDownMessage = "The application is shutting down.";
 
@@ -1110,6 +1110,7 @@ internal sealed class WindowManager : IWindowManager
         _callbacks.ApplyTheme(_setupWindow);
         _callbacks.ApplyTheme(_readyWindow);
         _callbacks.ApplyTheme(_restartProgressWindow);
+        _callbacks.ApplyTheme(_personalDashboardWindow);
     }
 
     public void UpdateHubTitleBarStatus(
@@ -1167,6 +1168,15 @@ internal sealed class WindowManager : IWindowManager
     private async Task CloseOwnedWindowsAsync()
     {
         List<Exception>? failures = null;
+        if (_personalDashboardWindow is { } personalDashboard)
+        {
+            try { await personalDashboard.CloseAsync(); }
+            catch (Exception ex)
+            {
+                (failures ??= []).Add(new InvalidOperationException("Personal Dashboard shutdown failed.", ex));
+            }
+            _personalDashboardWindow = null;
+        }
 
         if (_workspaceWindow is not null)
         {

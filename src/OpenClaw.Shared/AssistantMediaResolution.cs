@@ -36,4 +36,7 @@ public enum AssistantFileDownloadStatus
 internal readonly record struct GatewayConnectionLease(
     Guid ClientId,
     long Generation,
-    Uri HttpBaseUri);
+    Uri HttpBaseUri)
+{
+    internal object? PersonalAuthority { get; init; }
+}

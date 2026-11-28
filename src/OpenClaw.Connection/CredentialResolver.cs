@@ -35,6 +35,22 @@ public sealed class CredentialResolver : ICredentialResolver
     {
         ArgumentNullException.ThrowIfNull(record);
 
+        if (record.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale)
+        {
+            if (record.SshTunnel is not null ||
+                !GatewayPersonalAuthenticationPolicy.TryNormalizeGatewayUrl(record.Url, out _, out var error))
+                return new(null, GatewayCredentialResolutionStatus.Missing,
+                    Detail: "Personal authentication requires a direct credential-free wss:// host.ts.net route.");
+            return GatewayCredentialResolution.FromLegacy(new GatewayCredential(
+                string.Empty, false, GatewayPersonalAuthenticationPolicy.CredentialSource)
+            {
+                OperatorAuthentication = OperatorAuthenticationMode.PersonalTailscale
+            });
+        }
+        if (record.OperatorAuthentication != OperatorAuthenticationMode.GatewayCredential)
+            return new(null, GatewayCredentialResolutionStatus.Corrupt,
+                Detail: "The saved operator authentication mode is unsupported.");
+
         return ResolveRole(
             _identityReader.ReadStoredDeviceToken(identityPath),
             SourceDeviceToken,

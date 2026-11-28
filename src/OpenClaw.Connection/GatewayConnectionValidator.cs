@@ -151,7 +151,8 @@ internal sealed class GatewayConnectionValidator(
             ignoreStoredDeviceToken: credential.Source != CredentialResolver.SourceDeviceToken,
             persistHandshakeDeviceTokens: false,
             ephemeralOperatorCredential: ephemeralOperatorCredential,
-            useBoundedBootstrapScopes: useBoundedBootstrapScopes)
+            useBoundedBootstrapScopes: useBoundedBootstrapScopes,
+            operatorAuthentication: credential.OperatorAuthentication)
         {
             UseV2Signature = record.IsLocal || record.RequiresV2Signature || credential.IsBootstrapToken
         };
@@ -165,8 +166,27 @@ internal sealed class GatewayConnectionValidator(
         OpenClawGatewayClient client, CancellationToken cancellationToken)
     {
         var completion = new TaskCompletionSource<SetupCodeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Handshake(object? sender, EventArgs e) =>
-            completion.TrySetResult(new(SetupCodeOutcome.Success));
+        void Handshake(object? sender, EventArgs e) => _ = VerifyHandshakeAsync();
+        async Task VerifyHandshakeAsync()
+        {
+            try
+            {
+                if (client.IsPersonalTailscaleAuthentication)
+                {
+                    if (client.PersonalHandshakeConnectionEpoch is not { } epoch)
+                        throw new InvalidOperationException();
+                    var self = await client.ReadPersonalIdentityAsync(epoch).ConfigureAwait(false);
+                    if (!GatewayPersonalAuthenticationPolicy.TryGetCanonicalProfileId(self, out var profile))
+                        throw new InvalidOperationException();
+                    client.VerifyPersonalIdentity(profile, epoch);
+                }
+                completion.TrySetResult(new(SetupCodeOutcome.Success));
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or OperationCanceledException)
+            {
+                completion.TrySetResult(AuthenticationFailure("Personal Tailscale identity could not be verified."));
+            }
+        }
         void AuthenticationFailed(object? sender, string message) =>
             completion.TrySetResult(AuthenticationFailure(message));
         // Pairing is reported before the Gateway closes the socket. Preserve it as the first result.

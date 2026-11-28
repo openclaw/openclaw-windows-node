@@ -10310,4 +10310,16 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Volg gedelegeerd werk vanuit dit gesprek.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets en tabbladen die deze sessie heeft gepubliceerd.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Er zijn nog geen panelen beschikbaar voor dit gesprek.</value></data>
+  <data name="ConnectionPage_OperatorAuthentication.Header" xml:space="preserve"><value>Operatorverificatie</value></data>
+  <data name="ConnectionPage_SharedAuthentication.Content" xml:space="preserve"><value>Gatewayreferentie</value></data>
+  <data name="ConnectionPage_PersonalAuthentication.Content" xml:space="preserve"><value>Persoonlijke Tailscale-identiteit</value></data>
+  <data name="ConnectionPage_PersonalHint.Text" xml:space="preserve"><value>Vereist een beveiligd Tailscale Gateway-adres en ondersteuning voor persoonlijke identiteit op de Gateway. Er wordt geen gedeeld token verzonden.</value></data>
+  <data name="PersonalDashboard_RecoveryTitle.Text" xml:space="preserve"><value>Persoonlijke aanmelding gewijzigd</value></data>
+  <data name="PersonalDashboard_RecoveryDetail.Text" xml:space="preserve"><value>Verbind deze Gateway opnieuw in OpenClaw Companion en open daarna het dashboard opnieuw.</value></data>
+  <data name="PersonalDashboard_Unavailable" xml:space="preserve"><value>Persoonlijke aanmelding is niet beschikbaar. Verbind opnieuw in de app.</value></data>
+  <data name="ConnectionPage_PersonalRouteRequired" xml:space="preserve"><value>Persoonlijke aanmelding vereist een beveiligd wss:// Tailscale Gateway-adres dat eindigt op .ts.net, zonder SSH-tunnel.</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>Persoonlijk aanmelden niet beschikbaar</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>Je Tailscale-identiteit kon niet worden geverifieerd. Maak opnieuw verbinding met deze Gateway. Gedeelde inloggegevens worden niet gebruikt.</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>Je Tailscale-identiteit moet opnieuw worden geverifieerd. Maak opnieuw verbinding met deze Gateway. Gedeelde inloggegevens worden niet gebruikt.</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>Persoonlijk aanmelden is mislukt en het herstel is niet voltooid. Controleer de verbindingsinstellingen voordat je het opnieuw probeert.</value></data>
 </root>

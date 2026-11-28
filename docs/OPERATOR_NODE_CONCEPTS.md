@@ -73,6 +73,13 @@ tokens can help the app connect for the first time, but a paired device token
 takes precedence after approval. This keeps long-lived operator and node
 identity scoped to the gateway record that issued it.
 
+An existing Tailscale Gateway can instead use the explicit personal operator
+mode. The Gateway verifies the Tailscale user, and Companion checks the current
+personal profile before exposing the operator connection. This does not turn the
+Windows node identity into a person or change node pairing. See
+[personal Tailscale operator identity](CONNECTION_ARCHITECTURE.md#personal-tailscale-operator-identity)
+for the connection and Dashboard requirements.
+
 Some trust decisions are intentionally not automatic. Node command trust and
 capability reapproval stay pending until an operator explicitly approves them,
 so a new or changed node capability is visible before the gateway can use it.

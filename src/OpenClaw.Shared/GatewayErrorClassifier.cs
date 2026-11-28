@@ -69,6 +69,12 @@ public enum GatewayErrorKind
 
     /// <summary>The Gateway wire protocol is incompatible with this client.</summary>
     ProtocolMismatch,
+
+    /// <summary>The personal operator identity could not be verified.</summary>
+    PersonalIdentityUnverified,
+
+    /// <summary>The current personal operator identity must be verified again.</summary>
+    PersonalIdentityReverificationRequired,
 }
 
 /// <summary>

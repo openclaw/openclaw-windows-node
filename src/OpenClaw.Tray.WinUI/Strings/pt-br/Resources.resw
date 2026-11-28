@@ -10362,4 +10362,16 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Acompanhe o trabalho delegado desta conversa.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets e guias publicados por esta sessão.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Ainda não há painéis disponíveis para esta conversa.</value></data>
+  <data name="ConnectionPage_OperatorAuthentication.Header" xml:space="preserve"><value>Autenticação do operador</value></data>
+  <data name="ConnectionPage_SharedAuthentication.Content" xml:space="preserve"><value>Credencial do Gateway</value></data>
+  <data name="ConnectionPage_PersonalAuthentication.Content" xml:space="preserve"><value>Identidade pessoal Tailscale</value></data>
+  <data name="ConnectionPage_PersonalHint.Text" xml:space="preserve"><value>Requer um endereço Tailscale seguro e suporte à identidade pessoal no Gateway. Nenhum token compartilhado é enviado.</value></data>
+  <data name="PersonalDashboard_RecoveryTitle.Text" xml:space="preserve"><value>O acesso pessoal mudou</value></data>
+  <data name="PersonalDashboard_RecoveryDetail.Text" xml:space="preserve"><value>Reconecte este Gateway no OpenClaw Companion e reabra o painel.</value></data>
+  <data name="PersonalDashboard_Unavailable" xml:space="preserve"><value>O acesso pessoal está indisponível. Reconecte no aplicativo.</value></data>
+  <data name="ConnectionPage_PersonalRouteRequired" xml:space="preserve"><value>O acesso pessoal requer um endereço seguro wss:// do Gateway Tailscale terminado em .ts.net, sem túnel SSH.</value></data>
+  <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>Login pessoal indisponível</value></data>
+  <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>Não foi possível verificar sua identidade do Tailscale. Reconecte este Gateway. As credenciais compartilhadas não serão usadas.</value></data>
+  <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>Sua identidade do Tailscale precisa ser verificada novamente. Reconecte este Gateway. As credenciais compartilhadas não serão usadas.</value></data>
+  <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>O login pessoal falhou e a recuperação não foi concluída. Revise as configurações de Conexão antes de tentar novamente.</value></data>
 </root>
