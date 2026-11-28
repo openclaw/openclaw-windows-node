@@ -52,4 +52,7 @@ public static partial class LlamaRuntimeCatalog
             RuntimeFile("mtmd.dll", 1_576_960, "4b34d7a35913a85a013b1050c143480c87c18aeb7f1421c0574447c2203270e4"),
             RuntimeFile("libomp.dll", 764_928, "26caae17f29aaf2238f664375b663cd306d596bc9e36e780fa88356c51fe876a"),
         }));
+
+    // Same file as s_nemotronBoltArm64: initializer order across partial files is unspecified.
+    private static readonly LlamaRuntimeVariant[] s_nemotronBoltArm64Candidates = [s_nemotronBoltArm64];
 }

@@ -44,6 +44,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Clears developer-set Local AI guards before any test runs; see the file's summary. -->
+    <Compile Include="$(MSBuildThisFileDirectory)TestIsolation\LocalAiDevelopmentGuardReset.cs" Link="TestIsolation\LocalAiDevelopmentGuardReset.cs" />
+  </ItemGroup>
+
   <!--
     Copy an app-local VC++ runtime next to the test host. onnxruntime >= 1.20
     needs 14.38 or newer, so prefer the Visual Studio install's DLLs and only
