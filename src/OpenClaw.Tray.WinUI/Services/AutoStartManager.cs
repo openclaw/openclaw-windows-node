@@ -89,7 +89,7 @@ public static class AutoStartManager
                 {
                     using var key = Registry.CurrentUser.CreateSubKey(RegistryKey, writable: true)
                         ?? throw new InvalidOperationException("The Windows startup registry key is unavailable.");
-                    key.SetValue(AppName, $"\"{exe}\"");
+                    key.SetValue(AppName, WindowsStartupTaskRegistration.CreateBackgroundLaunchCommand(exe));
                 },
                 () =>
                 {
@@ -215,7 +215,7 @@ public static class AutoStartManager
                     return;
                 }
 
-                key.SetValue(AppName, $"\"{exePath}\" --background");
+                key.SetValue(AppName, WindowsStartupTaskRegistration.CreateBackgroundLaunchCommand(exePath));
                 Logger.Info("Auto-start enabled");
             }
             else

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using OpenClawTray.Services;
 using OpenClaw.Shared;
 
@@ -113,5 +114,18 @@ public sealed class SetupStartupPolicyTests
         gate.Release();
         await Assert.ThrowsAsync<InvalidOperationException>(() => task);
         Assert.Equal(0, writes);
+    }
+
+    [Fact]
+    public void EveryRunKeyWriteUsesTheSharedBackgroundLaunchCommand()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "AutoStartManager.cs"));
+        var writes = Regex.Matches(source, @"\.SetValue\(AppName,[^;]*;").Select(match => match.Value).ToList();
+
+        // A Run entry without --background opens a window at logon (#1957).
+        Assert.NotEmpty(writes);
+        Assert.All(writes, write =>
+            Assert.Contains("WindowsStartupTaskRegistration.CreateBackgroundLaunchCommand(", write));
     }
 }
