@@ -25,7 +25,7 @@ public sealed record ChatToolActivitySummary(
     IReadOnlyList<ChatToolActivityCount> Counts,
     int ToolCount,
     ChatTimelineItem? NewestRunningTool,
-    int FailedCount = 0)
+    int FailedCount = 0, int BlockedCount = 0, int SkippedCount = 0, int UnknownCount = 0)
 {
     public bool IsRunning => NewestRunningTool is not null;
 }
@@ -425,22 +425,27 @@ public static class ChatToolActivityPresentation
     public static ChatToolActivitySummary Summarize(IReadOnlyList<ChatTimelineItem> tools)
     {
         var summary = Summarize(tools, skipRoutine: true);
-        return summary.ToolCount > 0 ? summary : Summarize(tools, skipRoutine: false);
+        return summary.ToolCount > 0 || tools.Any(tool => tool.ToolActivityFacts?.IsCanonical == true)
+            ? summary : Summarize(tools, skipRoutine: false);
     }
 
     private static ChatToolActivitySummary Summarize(IReadOnlyList<ChatTimelineItem> tools, bool skipRoutine)
     {
         // Port of the web resolveCompletedActivityWrappers: a completed wrapper is replaced only
         // by a nested call that stays counted, so a wrapper over routine calls still counts.
+        var authoritative = tools.Any(tool => tool.ToolActivityFacts?.IsCanonical == true);
         var wrappers = new HashSet<ChatTimelineItem>(ReferenceEqualityComparer.Instance);
         bool Shown(ChatToolCallNode node)
         {
             var childShown = false;
             foreach (var child in node.Children)
                 childShown |= Shown(child);
+            var facts = node.Tool.ToolActivityFacts;
+            var visible = facts is not { HideFromChannelProgress: true } and not { SuppressChannelProgress: true } &&
+                (facts?.IsCanonical == true || !(skipRoutine && ChatToolRowPresentation.IsRoutine(node.Tool)));
             if (childShown && node.Tool.ToolResult == ChatToolCallStatus.Success)
                 wrappers.Add(node.Tool);
-            return childShown || !(skipRoutine && ChatToolRowPresentation.IsRoutine(node.Tool));
+            return childShown || visible;
         }
         foreach (var root in GroupNested(tools))
             Shown(root);
@@ -448,17 +453,34 @@ public static class ChatToolActivityPresentation
         var categoryCounts = new Dictionary<ChatToolActivityCategory, int>();
         var counted = 0;
         var failed = 0;
+        var blocked = 0;
+        var skipped = 0;
+        var unknown = 0;
+        // Presentation-only dedup over the combined group. Reducer run/call identities stay distinct.
+        var canonical = tools.Where(tool => tool.ToolActivityFacts?.IsCanonical == true && tool.ToolActivityFacts.SuppressChannelProgress != true)
+            .GroupBy(tool => tool.ToolCallId ?? tool.Id, StringComparer.Ordinal)
+            .Select(group => group.Last()).ToHashSet(ReferenceEqualityComparer.Instance);
         foreach (var tool in tools)
         {
-            if (wrappers.Contains(tool) || skipRoutine && ChatToolRowPresentation.IsRoutine(tool))
+            var facts = tool.ToolActivityFacts;
+            if (facts is { HideFromChannelProgress: true } or { SuppressChannelProgress: true } ||
+                (facts?.IsCanonical == true ? !canonical.Contains(tool)
+                    : authoritative || wrappers.Contains(tool) || skipRoutine && ChatToolRowPresentation.IsRoutine(tool)))
                 continue;
-            var category = Classify(tool.ToolName, tool.ToolArgs);
-            if (category == ChatToolActivityCategory.Subagent && !ChatToolRowPresentation.IsSubagentLaunch(tool))
+            var category = facts?.CommandBearing == true ? ChatToolActivityCategory.Command
+                : facts?.IsCanonical == true ? ClassifyActivity(tool.ToolName)
+                : tool.ToolInputDetails?.Command is not null ? ChatToolActivityCategory.Command
+                    : Classify(tool.ToolName, tool.ToolArgs);
+            var outcome = Outcome(tool);
+            if (category == ChatToolActivityCategory.Subagent &&
+                (!ChatToolRowPresentation.IsSubagentLaunch(tool) || outcome is "failed" or "blocked" or "skipped"))
                 category = ChatToolActivityCategory.Generic;
             categoryCounts[category] = categoryCounts.GetValueOrDefault(category) + 1;
             counted++;
-            if (tool.ToolResult is ChatToolCallStatus.Error)
-                failed++;
+            if (outcome == "failed") failed++;
+            else if (outcome == "blocked") blocked++;
+            else if (outcome == "skipped") skipped++;
+            else if (facts is { IsCanonical: true, AuthoritativeAbsence: false } && facts.UnpairedCall != true && outcome is null) unknown++;
         }
 
         var counts = Enum.GetValues<ChatToolActivityCategory>()
@@ -466,9 +488,42 @@ public static class ChatToolActivityPresentation
             .Select(category => new ChatToolActivityCount(category, categoryCounts[category]))
             .ToArray();
         var newestRunning = tools.LastOrDefault(
-            static tool => tool.ToolResult is null or ChatToolCallStatus.InProgress);
-        return new ChatToolActivitySummary(counts, counted, newestRunning, failed);
+            tool => (!authoritative || tool.ToolActivityFacts?.IsCanonical == true) && Outcome(tool) == "running" &&
+                tool.ToolActivityFacts is not { HideFromChannelProgress: true } &&
+                tool.ToolActivityFacts is not { SuppressChannelProgress: true });
+        return new ChatToolActivitySummary(counts, counted, newestRunning, failed, blocked, skipped, unknown);
     }
+
+    /// <summary>Display outcome facts do not change the reducer's execution outcome or admission.</summary>
+    internal static string? Outcome(ChatTimelineItem tool) => tool.ToolActivityFacts is { AuthoritativeAbsence: false } facts &&
+        (facts.IsCanonical || facts.Status is not null)
+        ? !facts.IsCanonical && tool.ToolResult == ChatToolCallStatus.Error
+            ? facts.Status == "blocked" ? "blocked" : "failed"
+            : !facts.IsCanonical && tool.ToolResult == ChatToolCallStatus.Interrupted ? null
+            : facts.Status == "running" && tool.ToolResult is ChatToolCallStatus.Success or ChatToolCallStatus.Error
+                ? tool.ToolResult == ChatToolCallStatus.Error ? "failed" : "completed" : facts.Status
+        : tool.ToolResult switch
+        {
+            null or ChatToolCallStatus.InProgress => "running",
+            ChatToolCallStatus.Success => "completed",
+            ChatToolCallStatus.Error => "failed",
+            _ => null,
+        };
+
+    // Canonical Gateway activity uses the same narrow category map as the web. Legacy tool rows
+    // retain their broader native aliases only when the producer supplied no activity facts.
+    private static ChatToolActivityCategory ClassifyActivity(string? toolName) => NormalizeToolName(toolName) switch
+    {
+        "sessions_spawn" => ChatToolActivityCategory.Subagent,
+        "exec" or "bash" or "shell" or "run_command" or "run_terminal_cmd" => ChatToolActivityCategory.Command,
+        "read" or "read_file" or "readfile" or "notebookread" or "notebook_read" => ChatToolActivityCategory.Read,
+        "edit" or "apply_patch" or "applypatch" or "patch" or "edit_file" or "multiedit" or "multi_edit" or
+            "notebookedit" or "notebook_edit" => ChatToolActivityCategory.Edit,
+        "write" or "write_file" or "create_file" => ChatToolActivityCategory.Write,
+        "grep" or "glob" or "find" or "ls" or "list" or "codebase_search" or "web_search" => ChatToolActivityCategory.Search,
+        "web_fetch" or "webfetch" or "fetch" => ChatToolActivityCategory.Fetch,
+        _ => ChatToolActivityCategory.Generic,
+    };
 
     public static ChatToolActivityCategory Classify(string? toolName, JsonObject? args = null)
     {
@@ -570,7 +625,9 @@ public sealed record ChatToolActivityFormatTemplates(
     string ToolFallback,
     string SubagentOne = "{0} subagent",
     string SubagentMany = "{0} subagents",
-    string FailedCount = "{0} failed");
+    string FailedCount = "{0} failed",
+    string RawDetails = "Raw details",
+    string BlockedCount = "{0} blocked", string SkippedCount = "{0} skipped", string UnknownCount = "{0} unknown");
 
 /// <summary>Pure localized-template formatter matching the web tool-group summary policy.</summary>
 public static class ChatToolActivityFormatter
@@ -579,21 +636,14 @@ public static class ChatToolActivityFormatter
         ChatToolActivitySummary summary,
         ChatToolActivityFormatTemplates templates)
     {
-        if (summary.NewestRunningTool is { } running)
-        {
-            return string.Format(
-                CultureInfo.CurrentCulture,
-                templates.Running,
-                string.IsNullOrWhiteSpace(running.ToolName)
-                    ? templates.ToolFallback
-                    : ChatToolRowPresentation.DisplayName(running.ToolName));
-        }
-
         // Like the web group summary, failures follow the counts as their own outcome.
         var parts = summary.Counts.Select(count => FormatCount(count, templates)).ToList();
         if (summary.FailedCount > 0)
             parts.Add(string.Format(CultureInfo.CurrentCulture, templates.FailedCount, summary.FailedCount));
-        return string.Join(" · ", parts);
+        if (summary.BlockedCount > 0) parts.Add(string.Format(CultureInfo.CurrentCulture, templates.BlockedCount, summary.BlockedCount));
+        if (summary.SkippedCount > 0) parts.Add(string.Format(CultureInfo.CurrentCulture, templates.SkippedCount, summary.SkippedCount));
+        if (summary.UnknownCount > 0) parts.Add(string.Format(CultureInfo.CurrentCulture, templates.UnknownCount, summary.UnknownCount));
+        return parts.Count > 0 ? string.Join(" · ", parts) : templates.RawDetails;
     }
 
     private static string FormatCount(
@@ -638,18 +688,6 @@ public sealed class ChatToolActivityExpansionState
     {
         ResetIfNeeded(collapseVersion);
         return _overrides.TryGetValue(key, out var value) && value;
-    }
-
-    /// <summary>
-    /// A group that has no choice of its own inherits the choice made on the single row it grew
-    /// from, so a row the user opened stays open when the next call joins it.
-    /// </summary>
-    public bool IsExpanded(string key, int collapseVersion, string? fallbackKey)
-    {
-        ResetIfNeeded(collapseVersion);
-        return _overrides.TryGetValue(key, out var value)
-            ? value
-            : fallbackKey is not null && _overrides.TryGetValue(fallbackKey, out var inherited) && inherited;
     }
 
     public void SetExplicit(string key, bool isExpanded, int collapseVersion)

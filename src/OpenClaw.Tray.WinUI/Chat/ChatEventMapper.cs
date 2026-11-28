@@ -272,18 +272,18 @@ internal static class ChatEventMapper
                 ChatHistoryReplayProjection.ToolLabel(tool.ToolName, args),
                 tool.ToolName, args, tool.CallId, RunId: runId, HandoffInput: tool.HandoffInput,
                 InputDetails: NativeToolProjector.ProjectInputDetails(tool.Args, tool.ToolName),
-                ParentCallId: tool.ParentCallId);
+                ParentCallId: tool.ParentCallId, ActivityFacts: tool.ActivityFacts);
         }
         else
         {
             var output = NativeToolProjector.TruncateToolOutput(tool.Text ?? "");
             yield return tool.IsError
                 ? new ChatToolErrorEvent(output, tool.CallId, RunId: runId,
-                    ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId))
+                    ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId), ActivityFacts: tool.ActivityFacts)
                 : new ChatToolOutputEvent(output, tool.CallId, RunId: runId,
                     HandoffReceipt: tool.HandoffReceipt,
                     ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId),
-                    DiffFacts: tool.ResultDiffFacts);
+                    DiffFacts: tool.ResultDiffFacts, ActivityFacts: tool.ActivityFacts);
         }
     }
 
@@ -346,7 +346,8 @@ internal static class ChatEventMapper
                     evt.Data.TryGetProperty("args", out var args) ? args : null),
                 InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, identity.Name),
                 ParentCallId: NativeToolProjector.GetStringProperty(evt.Data, "parentToolCallId") is { Length: > 0 } parent
-                    ? parent : null),
+                    ? parent : null,
+                ActivityFacts: ChatToolActivityFacts.Read(evt.Data)),
             "result" when NativeToolProjector.IsToolResultError(evt.Data) =>
                 new ChatToolErrorEvent(
                     NativeToolProjector.ExtractToolResultErrorText(evt.Data),
@@ -477,7 +478,7 @@ internal static class ChatEventMapper
                             evt.Data,
                             ToolStatusFallback(childStatus)),
                         ToolCallId: toolCallId,
-                        RunId: evt.RunId);
+                        RunId: evt.RunId, ActivityFacts: ChatToolActivityFacts.Read(evt.Data));
                 }
 
                 if (IsCompletedToolStatus(childStatus))
@@ -485,7 +486,7 @@ internal static class ChatEventMapper
                     return new ChatToolOutputEvent(
                         string.Empty,
                         ToolCallId: toolCallId,
-                        RunId: evt.RunId);
+                        RunId: evt.RunId, ActivityFacts: ChatToolActivityFacts.Read(evt.Data));
                 }
 
                 return string.IsNullOrWhiteSpace(toolCallId)
@@ -497,7 +498,8 @@ internal static class ChatEventMapper
                         commandArgs,
                         ActivatesTurn: false,
                         RunId: evt.RunId,
-                        InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, childIdentity.Name));
+                        InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, childIdentity.Name),
+                        ActivityFacts: ChatToolActivityFacts.Read(evt.Data));
             }
 
             if (string.IsNullOrWhiteSpace(toolCallId))
@@ -510,7 +512,8 @@ internal static class ChatEventMapper
                 commandArgs,
                 ActivatesTurn: normalizedPhase == "start",
                 RunId: evt.RunId,
-                InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, childIdentity.Name));
+                InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, childIdentity.Name),
+                ActivityFacts: ChatToolActivityFacts.Read(evt.Data));
         }
 
         if (!string.Equals(kind, "tool", StringComparison.OrdinalIgnoreCase))
@@ -527,6 +530,9 @@ internal static class ChatEventMapper
 
         return phase.ToLowerInvariant() switch
         {
+            "update" when !string.IsNullOrEmpty(itemId) => new ChatToolPresentationEvent(
+                itemId, identity.Name, identity.Strength, toolArgs, ActivatesTurn: false, RunId: evt.RunId,
+                InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, identity.Name), ActivityFacts: ChatToolActivityFacts.Read(evt.Data)),
             "start" => new ChatToolStartEvent(
                 label,
                 identity.Name,
@@ -534,21 +540,22 @@ internal static class ChatEventMapper
                 ToolCallId: itemId,
                 IdentityStrength: identity.Strength,
                 RunId: evt.RunId,
-                InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, identity.Name)),
+                InputDetails: NativeToolProjector.ExtractInputDetails(evt.Data, identity.Name),
+                ActivityFacts: ChatToolActivityFacts.Read(evt.Data)),
             "end" when IsErrorLikeToolStatus(status) => new ChatToolErrorEvent(
                 NativeToolProjector.ExtractToolErrorText(
                     evt.Data,
                     ToolStatusFallback(status)),
                 ToolCallId: itemId,
-                RunId: evt.RunId),
+                RunId: evt.RunId, ActivityFacts: ChatToolActivityFacts.Read(evt.Data)),
             "end" => new ChatToolOutputEvent(
                 string.Empty,
                 ToolCallId: itemId,
-                RunId: evt.RunId),
+                RunId: evt.RunId, ActivityFacts: ChatToolActivityFacts.Read(evt.Data)),
             "error" => new ChatToolErrorEvent(
                 NativeToolProjector.SanitizeToolDisplayValue(title),
                 ToolCallId: itemId,
-                RunId: evt.RunId),
+                RunId: evt.RunId, ActivityFacts: ChatToolActivityFacts.Read(evt.Data)),
             _ => null,
         };
     }
@@ -641,12 +648,16 @@ internal static class ChatEventMapper
                     ? (long)retryAtMs : null)
             : null;
 
-    private static ChatEvent? MapUsage(AgentEventInfo evt) =>
-        !string.IsNullOrWhiteSpace(evt.RunId) && evt.Seq > 0
-        && evt.Data.ValueKind == JsonValueKind.Object
-        && evt.Data.TryGetProperty("outputTokens", out var value)
-        && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var tokens) && tokens >= 0
-            ? new ChatRunUsageEvent(evt.RunId, tokens, evt.Seq) : null;
+    private static ChatEvent? MapUsage(AgentEventInfo evt)
+    {
+        if (string.IsNullOrWhiteSpace(evt.RunId) || evt.Seq <= 0 || evt.Data.ValueKind != JsonValueKind.Object)
+            return null;
+        if (evt.Data.TryGetProperty("usageReport", out var report) && report.ValueKind == JsonValueKind.Object &&
+            StringProperty(report, "state") == "unavailable")
+            return new ChatRunUsageEvent(evt.RunId, null, evt.Seq);
+        return evt.Data.TryGetProperty("outputTokens", out var value) && value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt64(out var tokens) && tokens >= 0 ? new ChatRunUsageEvent(evt.RunId, tokens, evt.Seq) : null;
+    }
 
     private static ChatEvent? MapFallback(AgentEventInfo evt, Func<string, string>? getString)
     {

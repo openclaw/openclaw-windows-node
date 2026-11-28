@@ -7438,11 +7438,11 @@
   <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>回答尚未確認。請重新整理以檢查狀態後再試。</value></data>
   <data name="Chat_Questions_Invalid" xml:space="preserve"><value>無法讀取代理程式的問題。請重新整理或開啟網頁版聊天作答。</value></data>
   <data name="Chat_Run_Finished" xml:space="preserve"><value>已完成</value></data>
-  <data name="Chat_Run_Approval" xml:space="preserve"><value>等待核准</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>正在等待核准…</value></data>
   <data name="Chat_Run_Answer" xml:space="preserve"><value>等待您的回答</value></data>
   <data name="Chat_Run_Compacting" xml:space="preserve"><value>正在壓縮內容</value></data>
   <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>壓縮內容後正在重試</value></data>
-  <data name="Chat_Run_Retry" xml:space="preserve"><value>正在重試模型要求</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>正在重試…</value></data>
   <data name="Chat_Run_RetryIn" xml:space="preserve"><value>{0} 秒後重試</value></data>
   <data name="Chat_History_UnavailableTitle" xml:space="preserve"><value>無法載入此對話</value></data>
   <data name="Chat_History_UnavailableBody" xml:space="preserve"><value>請重試以載入其訊息。</value></data>
@@ -7452,7 +7452,8 @@
   <data name="Chat_Run_Working" xml:space="preserve"><value>正在處理</value></data>
   <data name="Chat_Run_Tool" xml:space="preserve"><value>正在執行 {0}</value></data>
   <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>問題已無法使用</value></data>
-  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} 個輸出權杖</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0} 個輸出權杖</value></data>
+  <data name="Chat_Run_OutputTokenOne" xml:space="preserve"><value>1 個輸出權杖</value></data>
   <data name="Chat_Questions_OtherPlaceholder" xml:space="preserve"><value>在此輸入您自己的答案</value></data>
   <data name="Chat_Questions_KeyboardHint" xml:space="preserve"><value>Enter 換行 / Ctrl+Enter 繼續</value></data>
   <data name="Chat_Questions_Expand" xml:space="preserve"><value>展開問題</value></data>
@@ -10309,4 +10310,30 @@
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>追蹤此對話中委派的工作。</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此工作階段發布的小工具和索引標籤。</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此對話尚無可用的面板。</value></data>
+  <data name="Chat_Activity_RawDetails" xml:space="preserve"><value>原始詳細資料</value></data>
+  <data name="Chat_Activity_BlockedCount" xml:space="preserve"><value>{0} 項已封鎖</value></data>
+  <data name="Chat_Activity_SkippedCount" xml:space="preserve"><value>{0} 項已略過</value></data>
+  <data name="Chat_Activity_UnknownCount" xml:space="preserve"><value>{0} 項未知</value></data>
+  <data name="Chat_Activity_Blocked" xml:space="preserve"><value>已封鎖</value></data>
+  <data name="Chat_Activity_Skipped" xml:space="preserve"><value>已略過</value></data>
+  <data name="Chat_Activity_Unknown" xml:space="preserve"><value>結果未知</value></data>
+  <data name="Chat_Run_Phrase_shelling" xml:space="preserve"><value>剝殼中</value></data>
+  <data name="Chat_Run_Phrase_scuttling" xml:space="preserve"><value>疾爬中</value></data>
+  <data name="Chat_Run_Phrase_clawing" xml:space="preserve"><value>揮爪中</value></data>
+  <data name="Chat_Run_Phrase_pinching" xml:space="preserve"><value>鉗夾中</value></data>
+  <data name="Chat_Run_Phrase_molting" xml:space="preserve"><value>蛻殼中</value></data>
+  <data name="Chat_Run_Phrase_bubbling" xml:space="preserve"><value>冒泡中</value></data>
+  <data name="Chat_Run_Phrase_tiding" xml:space="preserve"><value>潮湧中</value></data>
+  <data name="Chat_Run_Phrase_reefing" xml:space="preserve"><value>穿梭礁石中</value></data>
+  <data name="Chat_Run_Phrase_cracking" xml:space="preserve"><value>破殼中</value></data>
+  <data name="Chat_Run_Phrase_sifting" xml:space="preserve"><value>篩選中</value></data>
+  <data name="Chat_Run_Phrase_brining" xml:space="preserve"><value>鹽漬中</value></data>
+  <data name="Chat_Run_Phrase_nautiling" xml:space="preserve"><value>鸚鵡螺巡遊中</value></data>
+  <data name="Chat_Run_Phrase_krilling" xml:space="preserve"><value>磷蝦漫遊中</value></data>
+  <data name="Chat_Run_Phrase_barnacling" xml:space="preserve"><value>藤壺附著中</value></data>
+  <data name="Chat_Run_Phrase_lobstering" xml:space="preserve"><value>捕龍蝦中</value></data>
+  <data name="Chat_Run_Phrase_tidepooling" xml:space="preserve"><value>探索潮池中</value></data>
+  <data name="Chat_Run_Phrase_pearling" xml:space="preserve"><value>採珠中</value></data>
+  <data name="Chat_Run_Phrase_snapping" xml:space="preserve"><value>揮螯中</value></data>
+  <data name="Chat_Run_Phrase_surfacing" xml:space="preserve"><value>浮出水面中</value></data>
 </root>

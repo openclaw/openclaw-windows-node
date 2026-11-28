@@ -16,7 +16,9 @@ internal static class ChatVisuals
     private const double TextShimmerSweepMilliseconds = 900;
     private const double TextShimmerCycleMilliseconds = 1300;
     private sealed record ShimmerState(Storyboard Storyboard, object OriginalLocal, LinearGradientBrush Shimmer);
-    private static readonly ConditionalWeakTable<TextBlock, ShimmerState> s_shimmers = new();
+    // Native controls can outlive their managed wrappers. Keep lifecycle state on the native object.
+    private static readonly DependencyProperty TextShimmerStateProperty = DependencyProperty.RegisterAttached(
+        "TextShimmerState", typeof(object), typeof(ChatVisuals), new PropertyMetadata(null));
 
     internal static TextBlockElement WithTextShimmer(this TextBlockElement element, bool active) =>
         element.Set(text => TextShimmer(text, active))
@@ -81,7 +83,7 @@ internal static class ChatVisuals
     /// </summary>
     internal static void TextShimmer(TextBlock text, bool active)
     {
-        s_shimmers.TryGetValue(text, out var state);
+        var state = text.GetValue(TextShimmerStateProperty) as ShimmerState;
         var enabled = active &&
             new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled &&
             !new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
@@ -131,7 +133,7 @@ internal static class ChatVisuals
 
         var original = text.ReadLocalValue(TextBlock.ForegroundProperty);
         text.Foreground = brush;
-        s_shimmers.AddOrUpdate(text, new ShimmerState(storyboard, original, brush));
+        text.SetValue(TextShimmerStateProperty, new ShimmerState(storyboard, original, brush));
         text.Unloaded -= OnShimmerUnloaded;
         text.Unloaded += OnShimmerUnloaded;
         text.Loaded -= OnShimmerLoaded;
@@ -149,7 +151,7 @@ internal static class ChatVisuals
     /// </summary>
     private static void RefreshShimmerColors(TextBlock text)
     {
-        if (!s_shimmers.TryGetValue(text, out var state))
+        if (text.GetValue(TextShimmerStateProperty) is not ShimmerState state)
             return;
         var originalStyle = text.Style;
         var originalForeground = text.ReadLocalValue(TextBlock.ForegroundProperty);
@@ -190,7 +192,7 @@ internal static class ChatVisuals
 
     private static void OnShimmerUnloaded(object sender, RoutedEventArgs args)
     {
-        if (sender is TextBlock text && s_shimmers.TryGetValue(text, out var state))
+        if (sender is TextBlock text && text.GetValue(TextShimmerStateProperty) is ShimmerState state)
             StopShimmer(text, state);
     }
 
@@ -207,7 +209,7 @@ internal static class ChatVisuals
             else
                 text.SetValue(TextBlock.ForegroundProperty, state.OriginalLocal);
         }
-        s_shimmers.Remove(text);
+        text.ClearValue(TextShimmerStateProperty);
     }
     internal const double ReadingWidth = 768;
     internal const double ProseInset = 16;

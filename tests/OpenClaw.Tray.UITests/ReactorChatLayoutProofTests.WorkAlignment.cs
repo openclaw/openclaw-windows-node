@@ -111,7 +111,9 @@ public sealed partial class ReactorChatLayoutProofTests
                 ChatToolCallStatus.Success, "Passed: 12"),
             ExpandedTool("liveWrapper", "delegate",
                 new JsonObject { ["query"] = "Investigate the failing synthetic tests." },
-                status, settled ? "The delegate reported two findings." : ""),
+                status, settled ? "The delegate reported two findings." : "") with
+                { ToolInputDetails = new("""{"query":"Investigate the failing synthetic tests."}""",
+                    Preview: "Investigate the failing synthetic tests.") },
             ExpandedTool("liveChild", "read", new JsonObject { ["path"] = @"C:\Synthetic\Child.cs" },
                 status, settled ? "child output" : "partial output", parent: "liveWrapper"));
         return settled
@@ -622,9 +624,9 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() =>
             {
                 var texts = WorkHeaderTexts(surface, Assert.Single(RealizedTimelineElements<Expander>(surface)));
-                Assert.Equal(3, texts.Count);
-                Assert.Contains("Child.cs", texts[1].Text);
-                Assert.Equal("Running", texts[2].Text);
+                Assert.Equal(2, texts.Count);
+                Assert.Equal("Investigate the failing synthetic tests.\u2026", texts[1].Text);
+                Assert.DoesNotContain(texts, text => text.Text == "Running");
             });
 
             await SetWorkExpandedAsync(surface, true, activity);
@@ -1075,14 +1077,18 @@ public sealed partial class ReactorChatLayoutProofTests
         WaitForRenderedConditionAsync(() => IsWorkProgressReady(surface), "the run progress row",
             () => $"progress rows={RealizedTimelineElements<Grid>(surface).Count(grid => AutomationProperties.GetAutomationId(grid) == "ChatRunProgress")}"));
 
-    // The claw and its label sit at the top of the 28 DIP row, 8 DIP apart, on the same column as the prose.
+    // The claw and visible details line are centred in the 28 DIP row, 8 DIP apart,
+    // on the prose column. Ordinary running status remains available to automation only.
     private static void AssertWorkProgress(Border surface, Rect column)
     {
         T Part<T>(string id) where T : FrameworkElement => Assert.Single(RealizedTimelineElements<T>(surface),
             element => AutomationProperties.GetAutomationId(element) == id);
         var row = Bounds(Part<Grid>("ChatRunProgress"), surface);
         var claw = Bounds(Part<Grid>("ChatRunProgressClaw"), surface);
-        var text = Bounds(Part<TextBlock>("ChatRunProgressStatus"), surface);
+        var details = Part<TextBlock>("ChatRunProgressText");
+        Assert.Contains("120 output tokens", details.Text);
+        Assert.Equal(Visibility.Collapsed, Part<TextBlock>("ChatRunProgressStatus").Visibility);
+        var text = Bounds(details, surface);
         AssertWorkAligned("progress left", row.Left, column.Left, WorkEdgeTolerance);
         AssertWorkAligned("progress right", row.Right, column.Right, WorkEdgeTolerance);
         Assert.True(row.Height >= 27.5, $"progress row height: expected at least 28, measured {row.Height:0.##}.");

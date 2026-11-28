@@ -17,6 +17,60 @@ public sealed class InteractiveGatewayChatTests
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(30);
 
     [Fact]
+    public async Task CanonicalActivity_ItemUpdatesPreserveVisibleSiblingAndTerminalReplacementOverTheRealSocket()
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(HistoryMergeTimeout);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        const string key = GatewayScenario.EmptySessionKey;
+        const string run = "fixture-chat-1";
+        var first = new TaskCompletionSource<ChatTimelineItem>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var replaced = new TaskCompletionSource<ChatTimelineItem>(TaskCreationOptions.RunContinuationsAsynchronously);
+        provider.Changed += (_, args) =>
+        {
+            var tool = args.Snapshot.Timelines.GetValueOrDefault(key)?.Entries.FirstOrDefault(entry => entry.ToolCallId == "call");
+            if (tool?.ToolActivityFacts?.Meta == "First") first.TrySetResult(tool);
+            if (tool?.ToolActivityFacts?.Meta == "Final" && tool.ToolResult == ChatToolCallStatus.Success) replaced.TrySetResult(tool);
+        };
+        await provider.LoadAsync();
+        await provider.SendMessageAsync(key, "Synthetic activity contract proof.");
+        await server.PublishChatRunEventAsync(key, run, "lifecycle", new { phase = "start" });
+        await server.PublishChatRunEventAsync(key, run, "item", new
+        {
+            itemId = "visible", toolCallId = "call", name = "custom.calendar", kind = "tool", phase = "start",
+            title = "Inspect", meta = "First", status = "running", commandBearing = true,
+        });
+        var started = await first.Task.WaitAsync(HistoryMergeTimeout);
+        Assert.Equal(1, ChatToolActivityPresentation.Summarize([started]).ToolCount);
+        await server.PublishChatRunEventAsync(key, run, "item", new
+        {
+            itemId = "suppressed", toolCallId = "call", name = "custom.calendar", kind = "tool", phase = "update",
+            title = "Internal", meta = "Hidden", status = "running", suppressChannelProgress = true,
+        });
+        await server.PublishChatRunEventAsync(key, run, "item", new
+        {
+            itemId = "visible", toolCallId = "call", name = "custom.calendar", kind = "tool", phase = "end",
+            title = "Inspected", meta = "Final", status = "completed", commandBearing = true,
+        });
+        var completed = await replaced.Task.WaitAsync(HistoryMergeTimeout);
+        Assert.Equal("Final", completed.ToolActivityFacts!.Meta);
+        Assert.Equal(1, ChatToolActivityPresentation.Summarize([completed]).ToolCount);
+        Assert.Null(completed.ToolActivityFacts.SuppressChannelProgress);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "chat.history");
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
     public async Task FinalAfterPersistedReplyInLaterTurnRendersOnceWithoutHistoryReload()
     {
         using var temp = new TempDirectory();

@@ -9,6 +9,7 @@ public static class ChatTimelineReducer
     private const int MaxPendingToolRecords = 256;
     private const int MaxTerminalToolCorrelations = 768;
     private const int MaxRetainedToolTurns = 2;
+    private const int MaxObservedRunUsage = 64;
 
     public static bool CanApplyRetainedToolEvent(ChatTimelineState state, ChatEvent? evt)
     {
@@ -143,6 +144,18 @@ public static class ChatTimelineReducer
         if (!ReferenceEquals(state, next) && evt is ChatMessageDeltaEvent or ChatMessageEvent
             or ChatReasoningDeltaEvent or ChatReasoningStreamEvent or ChatToolStartEvent or ChatToolProgressEvent)
             next = next with { ProgressText = null, ProgressRetryAtMs = null };
+        if (next.RunUsage is { } currentUsage)
+        {
+            var observed = next.ObservedRunUsage ?? ImmutableList<ChatRunUsage>.Empty;
+            var index = observed.FindIndex(usage => usage.RunId == currentUsage.RunId);
+            if (index < 0 || currentUsage.Sequence >= observed[index].Sequence && observed[index] != currentUsage)
+            {
+                if (index >= 0) observed = observed.RemoveAt(index);
+                observed = observed.Add(currentUsage);
+                if (observed.Count > MaxObservedRunUsage) observed = observed.RemoveAt(0);
+                next = next with { ObservedRunUsage = observed };
+            }
+        }
         return next;
     }
 
@@ -179,7 +192,7 @@ public static class ChatTimelineReducer
 
     private static ChatTimelineState ApplyRunUsage(ChatTimelineState state, ChatRunUsageEvent evt) =>
         state.RunUsage is { } usage && usage.RunId == evt.RunId
-        && evt.OutputTokens >= 0 && evt.Sequence > usage.Sequence
+        && (evt.OutputTokens is null or >= 0) && evt.Sequence > usage.Sequence
             ? state with { RunUsage = usage with { OutputTokens = evt.OutputTokens, Sequence = evt.Sequence } }
             : state;
 
@@ -540,7 +553,8 @@ public static class ChatTimelineReducer
                     e.ToolArgs,
                     ActivatesTurn: state.TurnActive,
                     RunId: e.RunId,
-                    InputDetails: e.InputDetails);
+                    InputDetails: e.InputDetails,
+                    ActivityFacts: e.ActivityFacts);
                 var updated = ApplyToolPresentation(state, presentation);
                 if (e.ParentCallId is { Length: > 0 } && updated.Entries[existingIndex].ToolParentCallId is null)
                     updated = updated with
@@ -571,6 +585,7 @@ public static class ChatTimelineReducer
         var identityStrength = e.IdentityStrength;
         var toolArgs = CloneToolArgs(e.ToolArgs);
         var inputDetails = e.InputDetails;
+        var activityFacts = e.ActivityFacts;
         var correlationIds = System.Collections.Immutable.ImmutableHashSet<string>.Empty;
 
         if (e.ToolCallId is { } tcId && correlationKey is { } parentKey)
@@ -587,6 +602,7 @@ public static class ChatTimelineReducer
                     inputDetails = pending.InputDetails ?? inputDetails;
                 }
                 inputDetails ??= pending.InputDetails;
+                activityFacts = OpenClaw.Shared.ChatToolActivityFacts.Merge(pending.ActivityFacts, activityFacts);
                 toolArgs = MergeToolArgs(toolArgs, pending.ToolArgs);
                 correlationIds = MergeToolCorrelationIds(correlationIds, pending.CorrelationIds);
                 foreach (var correlationId in pending.CorrelationIds)
@@ -614,6 +630,7 @@ public static class ChatTimelineReducer
             ToolLegacyTurn: correlationKey?.LegacyTurn ?? state.ToolLegacyTurn,
             HandoffInput: e.ToolCallId is { Length: > 0 } ? e.HandoffInput : null,
             ToolInputDetails: inputDetails,
+            ToolActivityFacts: activityFacts,
             ToolParentCallId: e.ToolCallId is { Length: > 0 } && e.ParentCallId is { Length: > 0 } ? e.ParentCallId : null);
         entry = ApplyToolFeedback(entry, e.Feedback);
         if (correlationKey is { } outcomeParentKey)
@@ -747,6 +764,7 @@ public static class ChatTimelineReducer
                         ToolName = toolName,
                         IdentityStrength = strength,
                         ToolArgs = MergeToolArgs(existing.ToolArgs, e.ToolArgs),
+                        ActivityFacts = OpenClaw.Shared.ChatToolActivityFacts.Merge(existing.ActivityFacts, e.ActivityFacts),
                         InputDetails = e.ToolName == toolName && e.IdentityStrength >= existing.IdentityStrength
                             ? e.InputDetails ?? existing.InputDetails : existing.InputDetails,
                         CorrelationIds = MergeToolCorrelationIds(existing.CorrelationIds, correlationIds)
@@ -767,7 +785,7 @@ public static class ChatTimelineReducer
                         CloneToolArgs(e.ToolArgs),
                         correlationIds,
                         state.NextToolCorrelationSequence,
-                        e.InputDetails));
+                        e.InputDetails, e.ActivityFacts));
             }
 
             var terminalCorrelations = state.TerminalToolCorrelations
@@ -801,6 +819,7 @@ public static class ChatTimelineReducer
             ToolName = identityIsStronger ? e.ToolName : entry.ToolName,
             ToolIdentityStrength = identityIsStronger ? e.IdentityStrength : entry.ToolIdentityStrength,
             ToolArgs = MergeToolArgs(entry.ToolArgs, e.ToolArgs),
+            ToolActivityFacts = OpenClaw.Shared.ChatToolActivityFacts.Merge(entry.ToolActivityFacts, e.ActivityFacts),
             ToolInputDetails = identityIsStronger || e.ToolName == entry.ToolName
                 ? e.InputDetails ?? entry.ToolInputDetails : entry.ToolInputDetails,
             ToolCorrelationIds = mergedCorrelationIds
@@ -847,7 +866,7 @@ public static class ChatTimelineReducer
     static ChatTimelineState ApplyToolOutput(ChatTimelineState state, ChatToolOutputEvent e) =>
         ApplyToolOutcome(state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Success,
             handoffReceipt: e.ToolCallId is { Length: > 0 } ? e.HandoffReceipt : null,
-            resultReference: e.ResultReference, diffFacts: e.DiffFacts);
+            resultReference: e.ResultReference, diffFacts: e.DiffFacts, activityFacts: e.ActivityFacts);
 
     static ChatTimelineState ApplyToolProgress(ChatTimelineState state, ChatToolProgressEvent e)
     {
@@ -877,7 +896,7 @@ public static class ChatTimelineReducer
     static ChatTimelineState ApplyToolError(ChatTimelineState state, ChatToolErrorEvent e) =>
         ApplyToolOutcome(
             state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Error, e.ErrorTextQuality,
-            resultReference: e.ResultReference);
+            resultReference: e.ResultReference, activityFacts: e.ActivityFacts);
 
     static ChatTimelineState ApplyToolOutcome(
         ChatTimelineState state,
@@ -888,10 +907,11 @@ public static class ChatTimelineReducer
         ChatToolErrorTextQuality errorTextQuality = ChatToolErrorTextQuality.Unspecified,
         OpenClaw.Shared.ChatToolHandoffReceipt? handoffReceipt = null,
         ChatToolResultReference? resultReference = null,
-        OpenClaw.Shared.ChatToolResultDiffFacts? diffFacts = null)
+        OpenClaw.Shared.ChatToolResultDiffFacts? diffFacts = null,
+        OpenClaw.Shared.ChatToolActivityFacts? activityFacts = null)
     {
         var sequence = state.NextToolOutcomeSequence;
-        var incoming = new ChatPendingToolOutcome(text, status, sequence, errorTextQuality, handoffReceipt, resultReference, diffFacts);
+        var incoming = new ChatPendingToolOutcome(text, status, sequence, errorTextQuality, handoffReceipt, resultReference, diffFacts, activityFacts);
         var key = toolCallId is { Length: > 0 }
             ? ResolveBufferedCorrelationKey(state, runId, toolCallId)
             : default(ChatToolCorrelationKey?);
@@ -955,6 +975,8 @@ public static class ChatTimelineReducer
         string? incomingRunId = null,
         bool recoverLegacyReplay = false)
     {
+        if (incoming.ActivityFacts is not null && incoming.Sequence >= entry.ToolOutcomeSequence)
+            entry = entry with { ToolActivityFacts = OpenClaw.Shared.ChatToolActivityFacts.Merge(entry.ToolActivityFacts, incoming.ActivityFacts) };
         var currentStatus = entry.ToolResult ?? ChatToolCallStatus.InProgress;
         var currentPrecedence = ToolOutcomePrecedence(currentStatus);
         var incomingPrecedence = ToolOutcomePrecedence(incoming.Status);
@@ -1029,7 +1051,10 @@ public static class ChatTimelineReducer
         ChatPendingToolOutcome incoming)
     {
         var selected = SelectPendingOutcome(existing, incoming);
-        var other = ReferenceEquals(selected, incoming) ? existing : incoming;
+        selected = selected with { ActivityFacts = OpenClaw.Shared.ChatToolActivityFacts.Merge(
+            existing.Sequence <= incoming.Sequence ? existing.ActivityFacts : incoming.ActivityFacts,
+            existing.Sequence <= incoming.Sequence ? incoming.ActivityFacts : existing.ActivityFacts) };
+        var other = selected.Sequence == incoming.Sequence ? existing : incoming;
         // A later duplicate success without result details must not discard earlier diff facts.
         return selected is { Status: ChatToolCallStatus.Success, DiffFacts: null } &&
             other is { Status: ChatToolCallStatus.Success, DiffFacts: { } facts }

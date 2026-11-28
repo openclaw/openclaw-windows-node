@@ -68,25 +68,31 @@ internal static class ToolCallCardRenderer
         var title = rowText ?? (string.IsNullOrWhiteSpace(preview) ? toolName : preview);
         var diffStat = ChatToolDiffStats.Resolve(entry);
         // Web step rows: muted title, a muted inline "failed", no trailing "Done".
-        var inlineStatus = entry.ToolResult switch
+        var outcomeLabel = OutcomeLabel(entry);
+        var inlineStatus = outcomeLabel is not null
+            ? TextBlock(outcomeLabel).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
+            : entry.ToolResult switch
         {
             ChatToolCallStatus.Success => SubagentStatus(row.Subagent),
             ChatToolCallStatus.Error => TextBlock(LocalizedOrDefault("Chat_Tool_FailedInline", "failed"))
                 .FontSize(ChatVisuals.ToolRowFontSize)
                 .Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
-            _ => TextBlock(statusLabel).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+            ChatToolCallStatus.Interrupted => TextBlock(statusLabel).FontSize(ChatVisuals.ToolRowFontSize)
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+            _ => null,
         };
         var expansionKey = ChatToolActivityPresentation.ToolRowKey(props.SessionId, props.TimelineGeneration, entry.Id);
         var isExpanded = props.ToolExpansionState?.IsExpanded(expansionKey, props.ToolCallsCollapseVersion) ?? false;
         // Like the web ToolRowContent, only read, search and fetch rows show their dimmed detail.
         var detail = rowText is not null && row.Verb is ChatToolRowVerb.Read or ChatToolRowVerb.Searched
-            or ChatToolRowVerb.Fetched ? row.TargetDetail : null;
-        // Screen readers hear what the row shows: its title and the state beside it. A spawned
-        // subagent whose own state is unknown shows no state, so none is announced.
-        var displayedStatus = entry.ToolResult == ChatToolCallStatus.Success
+            or ChatToolRowVerb.Fetched
+                ? row.Verb == ChatToolRowVerb.Read && ChatToolRowLinks.WorkspaceFilePath(entry) is not null ? null : row.TargetDetail
+                : null;
+        // Screen readers hear the displayed title and state, including canonical outcomes.
+        var displayedStatus = outcomeLabel ?? (entry.ToolResult == ChatToolCallStatus.Success
             ? row.Subagent is { } subagent ? SubagentStatusText(subagent) : statusLabel
             : entry.ToolResult == ChatToolCallStatus.Error
-                ? LocalizedOrDefault("Chat_Tool_FailedInline", "failed") : statusLabel;
+                ? LocalizedOrDefault("Chat_Tool_FailedInline", "failed") : statusLabel);
         var header = BuildRowHeader(
             ToolGlyph(entry),
             showChevron,
@@ -449,13 +455,13 @@ internal static class ToolCallCardRenderer
         }
 
         // Inline and panel readers share the sanitized input, literal output and outcome.
-        var outcome = entry.ToolResult switch
+        var outcome = OutcomeLabel(entry) ?? (entry.ToolResult switch
         {
             ChatToolCallStatus.Success => LocalizedOrDefault("Chat_Tool_Completed", "Completed"),
             ChatToolCallStatus.Error => LocalizedOrDefault("Chat_Tool_FailedInline", "failed"),
             ChatToolCallStatus.Interrupted => StatusLabel(entry.ToolResult),
             _ => null,
-        };
+        });
         if (details.Count > 0 && outcome is not null)
         {
             details.Add(Border(Empty()).Height(1).Background(Theme.Ref("ChatStrokeBrush")).WithKey("outcome-divider"));
@@ -563,29 +569,41 @@ internal static class ToolCallCardRenderer
         Action<bool>? onHeaderHover = null,
         Action<bool>? onHeaderFocus = null,
         bool revealDetails = false,
-        bool closing = false)
+        bool closing = false,
+        ChatToolActivityHeadline? selectedHeadline = null,
+        bool canonicalHeadline = false)
     {
         var summary = activity.Summary
             ?? throw new ArgumentException("An activity row requires a summary.", nameof(activity));
-        var formattedSummary = FormatSummary(summary);
-        var runningTool = summary.NewestRunningTool;
-        var runningPreview = runningTool is null ? string.Empty
+        // The web group header shows blocked/unknown counts in both disclosure states.
+        // Failed/skipped stay on the individual rows revealed by expansion.
+        var formattedSummary = FormatSummary(summary with { FailedCount = 0, SkippedCount = 0 });
+        var runningTool = canonicalHeadline ? selectedHeadline?.Tool : summary.NewestRunningTool;
+        var runningPreview = selectedHeadline?.Title ?? (runningTool is null ? string.Empty
             : ChatToolRowPresentation.Resolve(runningTool, props.ChildThreads) is var runningRow &&
                 RowText(runningRow) is { } runningText
-                ? runningText : ToolPreview(runningTool);
-        var hasRunningTitle = summary.IsRunning && !string.IsNullOrWhiteSpace(runningPreview);
+                ? runningText : ToolPreview(runningTool));
+        var hasRunningTitle = runningTool is not null && !string.IsNullOrWhiteSpace(runningPreview);
+        var headlineRunning = canonicalHeadline ? selectedHeadline?.Running == true : summary.IsRunning;
         var summaryText = activity.IsCompletedWork
             ? activity.DurationMs is { } duration
                 ? string.Format(LocalizedOrDefault("Chat_Activity_WorkedFor", "Worked for {0}"),
                     ChatRunProgressProjection.ElapsedMilliseconds(duration))
                 : LocalizedOrDefault("Chat_Activity_Worked", "Worked")
-            : hasRunningTitle ? runningPreview : formattedSummary;
-        var runningStatus = hasRunningTitle ? StatusLabel(runningTool?.ToolResult) : null;
+            : hasRunningTitle ? runningPreview + (headlineRunning ? "\u2026" : "") : formattedSummary;
+        var badges = summary with
+        {
+            Counts = [], FailedCount = 0, SkippedCount = 0,
+            BlockedCount = hasRunningTitle ? summary.BlockedCount : 0,
+            UnknownCount = hasRunningTitle ? summary.UnknownCount : 0,
+        };
+        var badgeText = badges.FailedCount + badges.BlockedCount + badges.SkippedCount + badges.UnknownCount > 0
+            ? FormatSummary(badges) : null;
         string AutomationName(bool expanded) => string.Format(
             summary.ToolCount == 1
                 ? LocalizedOrDefault("Chat_Activity_AutomationFormatOne", "Activity: {0}. {1} tool. {2}.")
                 : LocalizedOrDefault("Chat_Activity_AutomationFormat", "Activity: {0}. {1} tools. {2}."),
-            summaryText,
+            badgeText is null ? summaryText : summaryText + " · " + badgeText,
             summary.ToolCount,
             expanded
                 ? LocalizedOrDefault("Chat_Activity_Expanded", "Expanded")
@@ -628,30 +646,28 @@ internal static class ToolCallCardRenderer
                     : LocalizedOrDefault("Chat_Activity_ToolCallsMany", "{0} tool calls"),
                 summary.ToolCount)
             : summaryText;
-        var headline = ChatVisuals.ActivityText(headlineText, summary.IsRunning)
-            .WithKey($"activity-headline:{summary.NewestRunningTool?.Id ?? "settled"}");
-        if (!reducedMotion && summary.IsRunning)
+        var headline = ChatVisuals.ActivityText(headlineText, headlineRunning)
+            .WithKey($"activity-headline:{runningTool?.Id ?? "settled"}");
+        if (!reducedMotion && headlineRunning)
             headline = headline.Transition(
                 Transition.Enter(Transition.Fade), Curve.Ease(LiveHeadlineMilliseconds, Easing.EaseOut));
         headline = headline.RiseWithTransition(LiveHeadlineRise, LiveHeadlineMilliseconds,
-            enabled: !reducedMotion && summary.IsRunning);
+            enabled: !reducedMotion && headlineRunning);
 
-        var titleLabel = summary.IsRunning ? "running" : summaryText;
+        var titleLabel = headlineRunning ? "running" : summaryText;
         var header = activity.IsCompletedWork
             ? BuildWorkHeader(showChevron, isExpanded, headline, onHeaderHover, titleLabel)
             : BuildRowHeader(
-                FluentIconCatalog.BulletedList,
+                runningTool is not null ? ToolGlyph(runningTool) : FluentIconCatalog.BulletedList,
                 showChevron,
                 isExpanded,
                 headline,
-                runningStatus is null
-                    ? null
-                    : TextBlock(runningStatus).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+                badgeText is not null ? TextBlock(badgeText)
+                    .FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")) : null,
                 onHeaderHover,
-                titleLabel: titleLabel);
-        // The Expander carries only the header and its expand state. The details render below it,
-        // outside the stock content slide and collapse, so the height reveal alone moves them and
-        // the rows below follow with layout.
+                titleLabel: titleLabel,
+                statusLabel: badgeText);
+        // Keep main's layout-owned disclosure reveal instead of the stock content slide.
         var expander = Expander(
                 summaryText,
                 Empty())
@@ -946,8 +962,22 @@ internal static class ToolCallCardRenderer
         return ReferenceEquals(node, sender);
     }
 
+    private static string? OutcomeLabel(ChatTimelineItem entry) => ChatToolActivityPresentation.Outcome(entry) switch
+    {
+        "failed" => LocalizedOrDefault("Chat_Tool_FailedInline", "failed"),
+        "blocked" => LocalizedOrDefault("Chat_Activity_Blocked", "Blocked"),
+        "skipped" => LocalizedOrDefault("Chat_Activity_Skipped", "Skipped"),
+        // Activity unknown belongs to the aggregate; an individual card still has its own result.
+        null when entry.ToolResult == ChatToolCallStatus.Error => LocalizedOrDefault("Chat_Tool_FailedInline", "failed"),
+        null when entry.ToolResult is ChatToolCallStatus.Success or ChatToolCallStatus.Interrupted => null,
+        null when entry.ToolActivityFacts is { IsCanonical: true, AuthoritativeAbsence: false } facts && facts.UnpairedCall != true
+            => LocalizedOrDefault("Chat_Activity_Unknown", "Outcome unknown"),
+        _ => null,
+    };
+
     private static string ToolGlyph(ChatTimelineItem entry) =>
-        ToolGlyph(ChatToolActivityPresentation.Classify(entry.ToolName, entry.ToolArgs));
+        ToolGlyph(entry.ToolActivityFacts?.CommandBearing == true || entry.ToolInputDetails?.Command is not null
+            ? ChatToolActivityCategory.Command : ChatToolActivityPresentation.Classify(entry.ToolName, entry.ToolArgs));
 
     private static string ToolGlyph(ChatToolActivityCategory category) => category switch
     {
@@ -979,7 +1009,11 @@ internal static class ToolCallCardRenderer
         ToolFallback: LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool"),
         SubagentOne: LocalizedOrDefault("Chat_Activity_SubagentOne", "{0} subagent"),
         SubagentMany: LocalizedOrDefault("Chat_Activity_SubagentMany", "{0} subagents"),
-        FailedCount: LocalizedOrDefault("Chat_Activity_FailedCount", "{0} failed"));
+        FailedCount: LocalizedOrDefault("Chat_Activity_FailedCount", "{0} failed"),
+        RawDetails: LocalizedOrDefault("Chat_Activity_RawDetails", "Raw details"),
+        BlockedCount: LocalizedOrDefault("Chat_Activity_BlockedCount", "{0} blocked"),
+        SkippedCount: LocalizedOrDefault("Chat_Activity_SkippedCount", "{0} skipped"),
+        UnknownCount: LocalizedOrDefault("Chat_Activity_UnknownCount", "{0} unknown"));
 
     private static void ApplyActivityExpander(
         Expander control,
@@ -1241,12 +1275,28 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
         var summary = Props.Activity.Summary
             ?? throw new ArgumentException("An activity row requires a summary.", nameof(Props));
         var isExpanded = Props.ExpansionState.IsExpanded(
-            Props.Activity.Key,
-            Props.Timeline.ToolCallsCollapseVersion,
-            Props.Activity.IsCompletedWork || Props.Activity.Tools.Count == 0
-                ? null
-                : ChatToolActivityPresentation.ToolRowKey(
-                    Props.Timeline.SessionId, Props.Timeline.TimelineGeneration, Props.Activity.Tools[0].Id));
+            Props.Activity.Key, Props.Timeline.ToolCallsCollapseVersion);
+        var headlineState = UseRef(new ChatToolActivityHeadlineState()).Current;
+        var active = (Props.Timeline.ShowThinkingIndicator || Props.Timeline.RunProgress is { Active: true }) &&
+            (Props.Timeline.ActiveToolActivityKey is null || Props.Timeline.ActiveToolActivityKey == Props.Activity.Key);
+        var runId = active ? Props.Timeline.RunProgress?.RunId ?? Props.Timeline.Session?.LastRunId : null;
+        var scope = Props.Activity.Key + "|run:" + runId;
+        var selected = headlineState.Update(scope,
+            active && !Props.Activity.IsCompletedWork ? Props.Activity.Tools : [], runId, Environment.TickCount64,
+            tool => ToolCallCardRenderer.RowText(ChatToolRowPresentation.Resolve(tool, Props.Timeline.ChildThreads)));
+        UseEffect((Func<Action>)(() =>
+        {
+            if (selected.RefreshAfterMs <= 0)
+                return static () => { };
+            var timer = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+            timer.IsRepeating = false;
+            timer.Interval = TimeSpan.FromMilliseconds(selected.RefreshAfterMs);
+            global::Windows.Foundation.TypedEventHandler<Microsoft.UI.Dispatching.DispatcherQueueTimer, object> tick =
+                (_, _) => setRenderVersion(++renderVersion.Current);
+            timer.Tick += tick;
+            timer.Start();
+            return () => { timer.Stop(); timer.Tick -= tick; };
+        }), scope, selected.Headline?.Tool.Id, selected.RefreshAfterMs);
 
         void OnUserExpansionChanged(bool expanded)
         {
@@ -1287,6 +1337,7 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
             value => setHovered(value),
             value => setFocused(value),
             revealDetails.Current && !reducedMotion,
-            closing.Current);
+            closing.Current,
+            selected.Headline, canonicalHeadline: true);
     }
 }
