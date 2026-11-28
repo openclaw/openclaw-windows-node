@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using OpenClawTray.A2UI.DataModel;
 using OpenClawTray.A2UI.Rendering;
 using OpenClawTray.A2UI.Protocol;
 using OpenClawTray.A2UI.Theming;
@@ -337,6 +338,36 @@ public sealed class A2UIDataModelStoreTests
                 Assert.Null(harness.DataModel.Read("s", "/items/" + index));
         });
     }
+
+    [Fact]
+    public async Task Router_DataOnlySurfacesStopAtTheCap_AndDeleteFreesTheId()
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var harness = BuildHarness(_ui);
+            for (var i = 0; i < DataModelStore.MaxSurfaces; i++)
+                harness.Router.Push(DataUpdate("s" + i, "ok"));
+
+            Assert.Equal("ok", harness.DataModel.Read("s0", "/v")!.GetValue<string>());
+            Assert.Equal("ok", harness.DataModel.Read("s" + (DataModelStore.MaxSurfaces - 1), "/v")!.GetValue<string>());
+
+            harness.Router.Push(DataUpdate("s" + DataModelStore.MaxSurfaces, "overflow"));
+            Assert.Null(harness.DataModel.Read("s" + DataModelStore.MaxSurfaces, "/v"));
+
+            harness.Router.Push(DataUpdate("s0", "again"));
+            Assert.Equal("again", harness.DataModel.Read("s0", "/v")!.GetValue<string>());
+            Assert.False(harness.Router.Surfaces.ContainsKey("s0"));
+
+            harness.Router.Push("""{"deleteSurface":{"surfaceId":"s0"}}""");
+            Assert.Null(harness.DataModel.Read("s0", "/v"));
+
+            harness.Router.Push(DataUpdate("s" + DataModelStore.MaxSurfaces, "after-delete"));
+            Assert.Equal("after-delete", harness.DataModel.Read("s" + DataModelStore.MaxSurfaces, "/v")!.GetValue<string>());
+        });
+    }
+
+    private static string DataUpdate(string surfaceId, string value) =>
+        "{\"dataModelUpdate\":{\"surfaceId\":\"" + surfaceId + "\",\"contents\":[{\"key\":\"v\",\"valueString\":\"" + value + "\"}]}}";
 
     /// <summary>Build an entry whose value is <paramref name="depth"/> nested valueArrays.</summary>
     private static DataModelEntry DeepArrayEntry(string key, int depth)
