@@ -589,6 +589,60 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
         }
     }
 
+    [Fact]
+    public async Task LocallyExpiredQuestion_ShowsEnabledRefreshAfterRecoveryFails()
+    {
+        await ui.ResetContainerAsync();
+        var gateway = new QuestionGateway();
+        var clock = new ManualTimeProvider();
+        using var coordinator = new ChatQuestionCoordinator(gateway, clock);
+        coordinator.Start();
+        gateway.Request(new("expired-refresh", "proof", "main", "run", 0, 2000,
+            "pending", [new("platform", "Platform", "Which platform?", [], false, true, false,
+                false, false, [], null, false)]));
+        gateway.SetConnected(false);
+        clock.Advance(TimeSpan.FromSeconds(3));
+        gateway.SetConnected(true);
+        await coordinator.RefreshAsync();
+
+        ReactorHostControl? host = null;
+        ChatThemeProofScope? scope = null;
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                scope = new("Light");
+                host = new() { Width = 480, Height = 400 };
+                host.Mount(_ => Component<ReactorQuestionPanel, ReactorQuestionPanelProps>(
+                    new(coordinator, "proof", "main", 480, 400)));
+                ui.Container.Children.Add(host);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindDescendants<TextBlock>(host!).Any(text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatQuestionResult_expired-refresh"),
+                "locally expired question result render"));
+            await ui.RunOnUIAsync(async () =>
+            {
+                var panel = Control<ScrollViewer>(host!, "ChatQuestionPanel");
+                Assert.Equal("Question expired",
+                    Control<TextBlock>(panel, "ChatQuestionResult_expired-refresh").Text);
+                var refresh = Assert.Single(FindDescendants<Button>(panel),
+                    button => AutomationProperties.GetName(button) == "Refresh questions");
+                Assert.True(refresh.IsEnabled);
+                await VisualTestCapture.CaptureAsync(panel, "Reactor-question-local-expiry-refresh");
+            });
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                ui.Container.Children.Clear();
+                host?.Dispose();
+                scope?.Dispose();
+            });
+        }
+    }
+
     private async Task SettleAsync()
     {
         for (var i = 0; i < 5; i++)
@@ -625,8 +679,9 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
 
     private sealed class QuestionGateway : IChatQuestionGateway
     {
-        public bool IsConnected => true;
-        public event EventHandler<ConnectionStatus>? StatusChanged { add { } remove { } }
+        private bool _connected = true;
+        public bool IsConnected => _connected;
+        public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler? QuestionProtocolError { add { } remove { } }
         public event EventHandler<GatewayQuestionEvent>? QuestionReceived;
         internal TaskCompletionSource<string> Reply { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -640,5 +695,10 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
         }
         internal void Request(GatewayQuestionRequest request) =>
             QuestionReceived?.Invoke(this, new(request.Id, request.Status, request));
+        internal void SetConnected(bool connected)
+        {
+            _connected = connected;
+            StatusChanged?.Invoke(this, connected ? ConnectionStatus.Connected : ConnectionStatus.Disconnected);
+        }
     }
 }

@@ -75,7 +75,7 @@ internal sealed class ReactorQuestionPanel : Component<ReactorQuestionPanelProps
                 .FontSize(12).Margin(14, 6)
                 .WithKey("result-" + terminal.Request.Id)
                 .AutomationId("ChatQuestionResult_" + terminal.Request.Id).LiveRegion(AutomationLiveSetting.Polite));
-        if (snapshot.Error is not null || pending.Any(prompt => prompt.NeedsRefresh))
+        if (snapshot.Error is not null || prompts.Any(prompt => prompt.NeedsRefresh))
             children.Add(Button(L("Chat_Questions_Refresh", "Refresh questions"), () => _ = props.Coordinator.RefreshAsync())
                 .AutomationName(L("Chat_Questions_Refresh", "Refresh questions"))
                 .IsEnabled(snapshot.Connected).HAlign(HorizontalAlignment.Left));
