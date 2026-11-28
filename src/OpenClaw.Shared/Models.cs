@@ -224,7 +224,8 @@ public sealed class SessionWorktreeInfo
 }
 
 /// <summary>A <c>sessions.changed</c> push: its <c>reason</c>, <c>sessionKey</c>, and owning <c>agentId</c>, each null when absent.</summary>
-public sealed record SessionListChange(string? Reason, string? SessionKey, string? AgentId = null);
+public sealed record SessionListChange(string? Reason, string? SessionKey, string? AgentId = null,
+    bool TranscriptInvalidated = false, string? SessionId = null);
 
 /// <summary>Assignable session owner projected by the Gateway (<c>owner.actor</c>).</summary>
 public sealed record SessionOwnerInfo(string Type, string? Id, string? Label);
@@ -1830,6 +1831,18 @@ public class ChatMessageInfo
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsTranscriptSnapshot { get; set; }
 
+    /// <summary>The physical session attached to a persisted transcript snapshot.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? TranscriptSessionId { get; set; }
+
+    /// <summary>The run ID stamped on a saved transcript row, without display fallbacks.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? PersistedRunId { get; set; }
+
+    /// <summary>An idle transcript snapshot can trigger a history read, not complete the run.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool TranscriptIdleHint { get; set; }
+
     /// <summary>Set by synchronous chat consumers when this frame must not produce a notification.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsNotificationSuppressed { get; private set; }
@@ -2204,7 +2217,11 @@ public class ChatHistoryInfo
 }
 
 /// <summary>Explicit same-session idle run observation from a history response, not a cached session row.</summary>
-public sealed record ChatHistoryTerminalRun(string RunId, string State, string? ErrorMessage = null);
+public sealed record ChatHistoryTerminalRun(string RunId, string State, string? ErrorMessage = null,
+    bool HasNoQueuedInputs = false)
+{
+    public bool LegacyQueueAppearsEmpty { get; init; }
+}
 
 /// <summary>Gateway cursor or canonical message boundary, fenced to the loaded session instance.</summary>
 public sealed record ChatHistoryPageRequest(string? Cursor, string SessionId, string? MessageId = null);

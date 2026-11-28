@@ -21,7 +21,8 @@ internal sealed record ChatStatusTransition(
 
 internal sealed record ChatSessionsTransition(
     ChatDataSnapshot Snapshot,
-    string[] QueuedThreadsToDrain);
+    string[] QueuedThreadsToDrain,
+    ChatHistoryCommitToken[] CarriedPromptReads);
 
 internal sealed record ChatResetTransition(
     ChatDataSnapshot Snapshot,
@@ -86,9 +87,12 @@ internal sealed record ChatHistoryCommitToken(
     string ThreadId,
     long ConnectionGeneration,
     long ResetGeneration,
-    long ReplacementGeneration);
+    long ReplacementGeneration,
+    string? SessionId = null);
 
-internal sealed record ChatHistoryRunLease(string RunId, string SessionId, long StartSequence);
+internal sealed record ChatHistoryRunLease(string? RunId, string SessionId, long? StartSequence,
+    long? TranscriptTurnGeneration = null, int? TranscriptBoundarySequence = null,
+    string? TranscriptBoundaryMessageId = null);
 
 internal sealed record ChatHistoryReplacementTransition(
     ChatDataSnapshot Snapshot,

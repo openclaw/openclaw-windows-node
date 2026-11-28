@@ -14,7 +14,8 @@ internal sealed record ChatHistoryLoadResult(
     ChatInFlightRunInfo? InFlightRun = null,
     ChatHistoryRunLease? RunLease = null,
     string? SessionId = null,
-    ChatHistoryTerminalRun? TerminalRun = null);
+    ChatHistoryTerminalRun? TerminalRun = null,
+    long? TerminalHistoryRevision = null);
 
 /// <summary>
 /// Owns history request lifetime, in-flight coalescing, cancellation, retries,
@@ -53,6 +54,9 @@ internal sealed class ChatHistoryLoader : IDisposable
         bool Replacement,
         bool Authoritative);
 
+    private readonly record struct LegacyQueueConfirmation(
+        ChatHistoryRunLease Lease, ChatHistoryTerminalRun Terminal, long ConnectionEpoch, long HistoryRevision);
+
     private const int MaxRetries = 3;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
 
@@ -64,7 +68,7 @@ internal sealed class ChatHistoryLoader : IDisposable
     private readonly ChatTelemetryTracker _telemetry;
     private readonly Func<TimeSpan, CancellationToken, Func<Task>, Task> _retryScheduler;
     private readonly Action? _failureReservedForTesting;
-    private readonly Dictionary<string, long> _inFlight = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (long RequestId, ChatHistoryCommitToken Token)> _inFlight = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ChatHistoryCommitToken> _authoritativePending =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, ChatHistoryCommitToken> _replacementPending =
@@ -277,7 +281,7 @@ internal sealed class ChatHistoryLoader : IDisposable
             {
                 return;
             }
-            if (_inFlight.ContainsKey(threadId))
+            if (_inFlight.TryGetValue(threadId, out var running))
             {
                 if (olderPage is not null)
                     return;
@@ -302,14 +306,13 @@ internal sealed class ChatHistoryLoader : IDisposable
                             _state.CaptureHistoryToken(threadId);
                     }
                 }
-                else if (force && expectedToken is null)
+                else if ((force && expectedToken is null) || !_state.IsHistoryRequestCurrent(running.Token))
                 {
-                    _forcePending[threadId] = _state.CaptureHistoryToken(threadId);
+                    _forcePending[threadId] = expectedToken ?? _state.CaptureHistoryToken(threadId);
                 }
                 return;
             }
             requestId = ++_requestSequence;
-            _inFlight[threadId] = requestId;
             generationToken = _generationCancellation.Token;
             canBegin = _state.TryBeginHistory(
                 threadId,
@@ -318,6 +321,7 @@ internal sealed class ChatHistoryLoader : IDisposable
                 out commitToken,
                 out model,
                 out generationActivation);
+            _inFlight[threadId] = (requestId, commitToken);
         }
 
         if (!canBegin)
@@ -372,9 +376,11 @@ internal sealed class ChatHistoryLoader : IDisposable
         Exception? failure = null;
         Task<ChatHistoryInfo>? request = null;
         var requiresReload = false;
+        LegacyQueueConfirmation? queueConfirmation = null;
         try
         {
             var runLease = olderPage is null ? _state.CaptureHistoryRun(threadId) : null;
+            var confirmationEpoch = runLease?.TranscriptTurnGeneration is not null ? _bridge.ChatMessageReadConnectionEpoch : null;
             request = olderPage is null ? _bridge.RequestChatHistoryAsync(threadId)
                 : _bridge.RequestOlderChatHistoryAsync(threadId, olderPage);
             var history = await request
@@ -420,14 +426,16 @@ internal sealed class ChatHistoryLoader : IDisposable
             }
             lock (_gate)
                 _retryCounts.Remove(commitToken);
-            Completed?.Invoke(
-                this,
-                new ChatHistoryLoadResult(
-                    commitToken,
-                    PublishSnapshot: true,
-                    InFlightRun: olderPage is null ? history.InFlightRun : null,
-                    RunLease: runLease, SessionId: history.SessionId,
-                    TerminalRun: olderPage is null ? history.TerminalRun : null));
+            var result = new ChatHistoryLoadResult(commitToken, PublishSnapshot: true,
+                InFlightRun: olderPage is null ? history.InFlightRun : null,
+                RunLease: runLease, SessionId: history.SessionId,
+                TerminalRun: olderPage is null ? history.TerminalRun : null);
+            if (confirmationEpoch is { } epoch && runLease is { } lease && history.SessionId == lease.SessionId &&
+                result.TerminalRun is { LegacyQueueAppearsEmpty: true } terminal &&
+                (lease.RunId is null || lease.RunId == terminal.RunId) &&
+                _state.CaptureLegacyHistoryQueueRevision(commitToken, lease, terminal.RunId) is { } revision)
+                queueConfirmation = new(lease, terminal, epoch, revision);
+            Completed?.Invoke(this, result);
         }
         catch (OperationCanceledException)
         {
@@ -512,6 +520,18 @@ internal sealed class ChatHistoryLoader : IDisposable
                     supersedeReplacement: false);
             }
         }
+
+        // The queue check cannot commit transcript rows. Release the history slot first so
+        // an older-page gesture or a fresh transcript read need not wait for it.
+        if (queueConfirmation is { } pendingConfirmation &&
+            await ConfirmLegacyQueueAsync(threadId, pendingConfirmation.Lease.SessionId, pendingConfirmation.ConnectionEpoch,
+                pendingConfirmation.Terminal, linkedCancellation.Token).ConfigureAwait(false))
+        {
+            Completed?.Invoke(this, new(commitToken, PublishSnapshot: false,
+                RunLease: pendingConfirmation.Lease, SessionId: pendingConfirmation.Lease.SessionId,
+                TerminalRun: pendingConfirmation.Terminal with { HasNoQueuedInputs = true, LegacyQueueAppearsEmpty = false },
+                TerminalHistoryRevision: pendingConfirmation.HistoryRevision));
+        }
     }
 
     private async Task RerunAfterActivationAsync(
@@ -536,6 +556,25 @@ internal sealed class ChatHistoryLoader : IDisposable
                 replacement: pending.Replacement,
                 supersedeReplacement: false)
             .ConfigureAwait(false);
+    }
+
+    private async Task<bool> ConfirmLegacyQueueAsync(string threadId, string sessionId, long epoch,
+        ChatHistoryTerminalRun terminal, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Older Gateways can read the pending queue before projecting the terminal run.
+            // Only a fresh request started after observing that terminal can confirm the queue.
+            var confirmation = await _bridge.RequestChatHistoryQueueConfirmationAsync(threadId, sessionId,
+                epoch, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
+            return confirmation is not null && confirmation.RunId == terminal.RunId && confirmation.State == terminal.State &&
+                (confirmation.HasNoQueuedInputs || confirmation.LegacyQueueAppearsEmpty);
+        }
+        catch (Exception error) when (error is OperationCanceledException or TimeoutException or InvalidOperationException
+            or System.IO.IOException or System.Text.Json.JsonException)
+        {
+            return false;
+        }
     }
 
     private ChatHistoryRebuildPlan BuildPlan(
@@ -725,6 +764,9 @@ internal sealed class ChatHistoryLoader : IDisposable
                     : null)
             {
                 Presentation = replayPart.Presentation,
+                TranscriptSessionId = role == "user" || role == "assistant" && !message.Presentation.IsImported &&
+                    !message.Presentation.IsIndependent && message.PersistedRunId is not null ? history.SessionId : null,
+                TranscriptRunId = role == "assistant" ? message.PersistedRunId : null,
                 UsageSnapshotTimestamp = role == "assistant" && message.Ts > 0
                     ? message.Ts
                     : null,
@@ -1118,7 +1160,7 @@ internal sealed class ChatHistoryLoader : IDisposable
         lock (_gate)
         {
             if (!_inFlight.TryGetValue(threadId, out var current) ||
-                current != requestId)
+                current.RequestId != requestId)
             {
                 pendingReload = null;
                 return;
