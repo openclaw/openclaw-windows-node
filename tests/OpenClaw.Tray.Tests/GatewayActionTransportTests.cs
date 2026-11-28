@@ -14,27 +14,27 @@ public class GatewayActionTransportTests
     }
 
     [Fact]
-    public void BuildAgentRequestPayload_HasFiveTopLevelFields()
+    public void BuildAgentRequestPayload_InheritsSessionEffort()
     {
         var action = new A2UIAction { Name = "submit", SurfaceId = "form", SourceComponentId = "btnSave" };
         var payload = GatewayActionTransport.BuildAgentRequestPayload(action, new FakeContext());
 
-        Assert.Equal(5, payload.Count);
+        Assert.Equal(4, payload.Count);
         Assert.Contains("message", payload);
         Assert.Contains("sessionKey", payload);
-        Assert.Contains("thinking", payload);
+        Assert.DoesNotContain("thinking", payload);
         Assert.Contains("deliver", payload);
         Assert.Contains("key", payload);
     }
 
     [Fact]
-    public void BuildAgentRequestPayload_DeliverIsFalse_ThinkingIsLow()
+    public void BuildAgentRequestPayload_DeliverIsFalse_WithoutChangingEffort()
     {
         var action = new A2UIAction { Name = "x", SurfaceId = "s", SourceComponentId = "c" };
         var payload = GatewayActionTransport.BuildAgentRequestPayload(action, new FakeContext());
 
         Assert.False(payload["deliver"]!.GetValue<bool>());
-        Assert.Equal("low", payload["thinking"]!.GetValue<string>());
+        Assert.False(payload.ContainsKey("thinking"));
     }
 
     [Fact]

@@ -10380,4 +10380,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Follow delegated work from this conversation.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets and tabs this session published.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>No panels are available for this conversation yet.</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>The saved Local AI route could not be verified. Preserve the endpoint and reconcile the original Gateway.</value></data>
+  <data name="LocalAi_GatewayProviderRejected" xml:space="preserve"><value>The Gateway rejected the Local AI provider configuration, so nothing was written. Update the OpenClaw Gateway and retry.</value></data>
+  <data name="LocalAi_GatewayProviderCheckFailed" xml:space="preserve"><value>The Gateway could not confirm which Local AI configuration it accepts, so nothing was written. Reconnect the Gateway and retry.</value></data>
 </root>
