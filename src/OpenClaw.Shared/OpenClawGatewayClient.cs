@@ -815,6 +815,15 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         return ParseChatHistory(payload, effectiveSessionKey);
     }
 
+    public async Task<ChatHistoryTerminalRun?> RequestChatHistoryQueueConfirmationAsync(string sessionKey,
+        string sessionId, long connectionEpoch, CancellationToken cancellationToken)
+    {
+        var payload = await SendResponseRequestAsync("chat.history", new { sessionKey },
+            ChatMessageReadTimeoutMs, connectionEpoch, cancellationToken).ConfigureAwait(false);
+        return payload.ValueKind == JsonValueKind.Object && ReadFirstString(payload, "sessionKey") == sessionKey &&
+            ReadFirstString(payload, "sessionId") == sessionId ? ParseTerminalHistoryRun(payload, sessionId) : null;
+    }
+
     private const int ChatMessageReadTimeoutMs = 15000;
     private const int SessionFileReadTimeoutMs = 15000;
     private const string SessionFileReadTimeoutEnvironmentVariable = "OPENCLAW_SESSION_FILE_READ_TIMEOUT_MS";
@@ -1276,18 +1285,25 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             "killed" => "aborted",
             _ => null,
         };
-        return state is null ? null : new(runId, state, ReadFirstString(session, "lastRunError"), HasNoQueuedHistoryInputs(payload));
+        if (state is null)
+            return null;
+        var empty = HistoryQueueAppearsEmpty(payload, out var hasQueueObservation);
+        return new(runId, state, ReadFirstString(session, "lastRunError"), HasNoQueuedInputs: empty && hasQueueObservation)
+        {
+            LegacyQueueAppearsEmpty = empty && !hasQueueObservation,
+        };
     }
 
-    private static bool HasNoQueuedHistoryInputs(JsonElement payload)
+    private static bool HistoryQueueAppearsEmpty(JsonElement payload, out bool hasQueueObservation)
     {
+        hasQueueObservation = false;
         if (!payload.TryGetProperty("pendingInputs", out var pending) || pending.ValueKind != JsonValueKind.Object ||
             !pending.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array ||
             !pending.TryGetProperty("total", out var total) || total.ValueKind != JsonValueKind.Number ||
             !total.TryGetInt32(out var count) || count < items.GetArrayLength())
             return false;
 
-        var hasQueueObservation = pending.TryGetProperty("hasQueuedInput", out var queueObservation);
+        hasQueueObservation = pending.TryGetProperty("hasQueuedInput", out var queueObservation);
         if (hasQueueObservation && queueObservation.ValueKind != JsonValueKind.False ||
             pending.TryGetProperty("queuedCount", out var queued) &&
             (queued.ValueKind != JsonValueKind.Number || !queued.TryGetInt32(out var queuedCount) || queuedCount != 0))

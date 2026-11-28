@@ -95,6 +95,8 @@ public interface IChatGatewayBridge : IDisposable
     /// </summary>
     Task ClearSessionThinkingLevelAsync(string sessionKey);
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey);
+    Task<ChatHistoryTerminalRun?> RequestChatHistoryQueueConfirmationAsync(string sessionKey, string sessionId,
+        long connectionEpoch, CancellationToken cancellationToken) => Task.FromResult<ChatHistoryTerminalRun?>(null);
     Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string sessionKey, ChatHistoryPageRequest page) =>
         Task.FromException<ChatHistoryInfo>(new NotSupportedException("Older history is not available on this bridge."));
     long? ChatMessageReadConnectionEpoch => null;
@@ -368,6 +370,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
 
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);
+    public Task<ChatHistoryTerminalRun?> RequestChatHistoryQueueConfirmationAsync(string sessionKey, string sessionId,
+        long connectionEpoch, CancellationToken cancellationToken) =>
+        _client.RequestChatHistoryQueueConfirmationAsync(sessionKey, sessionId, connectionEpoch, cancellationToken);
     public Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string sessionKey, ChatHistoryPageRequest page) =>
         _client.RequestChatHistoryAsync(sessionKey, page: page);
 

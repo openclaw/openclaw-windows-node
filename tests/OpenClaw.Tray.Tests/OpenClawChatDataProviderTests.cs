@@ -1573,12 +1573,16 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                 HistoryReads++;
                 beforeResponse?.Invoke();
                 object[] pending = pendingState is null ? [] : [new { id = "input-2", runId = "next-run", state = pendingState }];
+                var queuedCount = pendingState == "queued" ? 1 : 0;
+                object pendingInputs = pendingTotal is { } legacyTotal
+                    ? new { total = legacyTotal, queuedCount, items = pending }
+                    : new { total = pending.Length, queuedCount, items = pending, hasQueuedInput = queuedCount > 0 };
                 var reply = omitHistoryReplyRunId ? Message("assistant", "Delivered reply", "reply", 2) : _reply;
                 return Task.FromResult(ParseHistoryPayload(JsonSerializer.SerializeToElement(new
                 {
                     sessionId = historySessionId,
                     messages = _promptBeforeReply ? new[] { _prompt, _nextPrompt, reply } : new[] { _prompt, reply },
-                    pendingInputs = new { total = pendingTotal ?? pending.Length, queuedCount = pendingState == "queued" ? 1 : 0, items = pending },
+                    pendingInputs,
                     sessionInfo = new { sessionId = historySessionId, lastRunId = historyRunId,
                         hasActiveRun = running, status = running ? "running" : "done" },
                 })));

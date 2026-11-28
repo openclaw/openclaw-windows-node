@@ -464,6 +464,18 @@ internal sealed class ChatConversationState
                 .Select(session => session.Key!).ToArray();
     }
 
+    internal bool CanConfirmLegacyHistoryQueue(ChatHistoryCommitToken token, ChatHistoryRunLease lease, string runId)
+    {
+        lock (_gate)
+            return _history.IsCurrent(token, GetResetVersionLocked(token.ThreadId), _disposed) &&
+                MatchesTranscriptHistoryRunLocked(token.ThreadId, lease, runId);
+    }
+
+    private bool MatchesTranscriptHistoryRunLocked(string threadId, ChatHistoryRunLease lease, string runId) =>
+        CaptureHistoryRunLocked(threadId) is { } current &&
+        current == (lease with { RunId = runId,
+            TranscriptBoundaryMessageId = lease.TranscriptBoundaryMessageId ?? current.TranscriptBoundaryMessageId });
+
     internal ChatAssistantTransition? ReconcileHistoryRun(
         ChatHistoryCommitToken token, ChatHistoryRunLease lease, string? sessionId,
         ChatMessageInfo terminal, ChatProjectionContext context, bool hasNoQueuedInputs = false)
@@ -479,9 +491,7 @@ internal sealed class ChatConversationState
                 (lease.StartSequence is { } start
                     ? !_lifecycle.TryGetActiveRun(threadId, out var activeRun) || activeRun != lease.RunId ||
                       _lifecycle.HasRunStartedAfter(threadId, terminalRunId, start)
-                    : !hasNoQueuedInputs || CaptureHistoryRunLocked(threadId) is not { } current ||
-                      current != (lease with { RunId = terminalRunId,
-                          TranscriptBoundaryMessageId = lease.TranscriptBoundaryMessageId ?? current.TranscriptBoundaryMessageId })))
+                    : !hasNoQueuedInputs || !MatchesTranscriptHistoryRunLocked(threadId, lease, terminalRunId)))
                 return null;
             return ApplyAssistant(terminal, "", context, CurrentRuntimeGenerationLocked(threadId));
         }

@@ -2218,7 +2218,10 @@ public class ChatHistoryInfo
 
 /// <summary>Explicit same-session idle run observation from a history response, not a cached session row.</summary>
 public sealed record ChatHistoryTerminalRun(string RunId, string State, string? ErrorMessage = null,
-    bool HasNoQueuedInputs = false);
+    bool HasNoQueuedInputs = false)
+{
+    public bool LegacyQueueAppearsEmpty { get; init; }
+}
 
 /// <summary>Gateway cursor or canonical message boundary, fenced to the loaded session instance.</summary>
 public sealed record ChatHistoryPageRequest(string? Cursor, string SessionId, string? MessageId = null);

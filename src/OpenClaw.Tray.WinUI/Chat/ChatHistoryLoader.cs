@@ -375,6 +375,7 @@ internal sealed class ChatHistoryLoader : IDisposable
         try
         {
             var runLease = olderPage is null ? _state.CaptureHistoryRun(threadId) : null;
+            var confirmationEpoch = runLease?.TranscriptTurnGeneration is not null ? _bridge.ChatMessageReadConnectionEpoch : null;
             request = olderPage is null ? _bridge.RequestChatHistoryAsync(threadId)
                 : _bridge.RequestOlderChatHistoryAsync(threadId, olderPage);
             var history = await request
@@ -420,14 +421,26 @@ internal sealed class ChatHistoryLoader : IDisposable
             }
             lock (_gate)
                 _retryCounts.Remove(commitToken);
-            Completed?.Invoke(
-                this,
-                new ChatHistoryLoadResult(
-                    commitToken,
-                    PublishSnapshot: true,
-                    InFlightRun: olderPage is null ? history.InFlightRun : null,
-                    RunLease: runLease, SessionId: history.SessionId,
-                    TerminalRun: olderPage is null ? history.TerminalRun : null));
+            var result = new ChatHistoryLoadResult(commitToken, PublishSnapshot: true,
+                InFlightRun: olderPage is null ? history.InFlightRun : null,
+                RunLease: runLease, SessionId: history.SessionId,
+                TerminalRun: olderPage is null ? history.TerminalRun : null);
+            Completed?.Invoke(this, result);
+
+            if (confirmationEpoch is { } epoch && runLease is { } lease && history.SessionId == lease.SessionId &&
+                result.TerminalRun is { LegacyQueueAppearsEmpty: true } terminal &&
+                (lease.RunId is null || lease.RunId == terminal.RunId) &&
+                _state.CanConfirmLegacyHistoryQueue(commitToken, lease, terminal.RunId) &&
+                await ConfirmLegacyQueueAsync(threadId, lease.SessionId, epoch, terminal, linkedCancellation.Token)
+                    .ConfigureAwait(false))
+            {
+                Completed?.Invoke(this, result with
+                {
+                    PublishSnapshot = false,
+                    InFlightRun = null,
+                    TerminalRun = terminal with { HasNoQueuedInputs = true, LegacyQueueAppearsEmpty = false },
+                });
+            }
         }
         catch (OperationCanceledException)
         {
@@ -536,6 +549,26 @@ internal sealed class ChatHistoryLoader : IDisposable
                 replacement: pending.Replacement,
                 supersedeReplacement: false)
             .ConfigureAwait(false);
+    }
+
+    private async Task<bool> ConfirmLegacyQueueAsync(string threadId, string sessionId, long epoch,
+        ChatHistoryTerminalRun terminal, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Older Gateways can read the pending queue before projecting the terminal run.
+            // Only a fresh request started after observing that terminal can confirm the queue.
+            var confirmation = await _bridge.RequestChatHistoryQueueConfirmationAsync(threadId, sessionId,
+                epoch, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false);
+            return confirmation is not null && confirmation.RunId == terminal.RunId && confirmation.State == terminal.State &&
+                (confirmation.HasNoQueuedInputs || confirmation.LegacyQueueAppearsEmpty);
+        }
+        catch (Exception error) when (error is OperationCanceledException or TimeoutException or InvalidOperationException
+            or System.IO.IOException or System.Text.Json.JsonException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return false;
+        }
     }
 
     private ChatHistoryRebuildPlan BuildPlan(

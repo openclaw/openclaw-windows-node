@@ -419,6 +419,85 @@ public sealed class InteractiveGatewayChatTests
         await client.DisconnectAsync();
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task LegacyTerminalHistory_WaitsForIndependentQueueObservation(bool followUpQueued, bool sameRun)
+    {
+        const string key = GatewayScenario.EmptySessionKey;
+        const string sessionId = "legacy-queue-session";
+        const string run = "external-terminal-run";
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        server.OverrideSessionListRead(_ => new { sessions = new[] { new { key, sessionId, status = "running", hasActiveRun = true } } });
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var replyPainted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var confirmationStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseConfirmation = new ManualResetEventSlim();
+        client.SessionsUpdated += (_, _) => { if (provider.GetSessionId(key) == sessionId) ready.TrySetResult(); };
+        provider.Changed += (_, e) =>
+        {
+            if (e.Snapshot.Timelines.GetValueOrDefault(key) is { TurnActive: true } timeline &&
+                timeline.Entries.Any(row => row.Text == "Finished external reply"))
+                replyPainted.TrySetResult();
+        };
+        const long stamp = 1795800000000L;
+        var prompt = new { role = "user", content = "External prompt", timestamp = stamp,
+            __openclaw = new { id = "legacy-user", seq = 1 } };
+        var reply = new { role = "assistant", content = "Finished external reply", timestamp = stamp + 1,
+            __openclaw = new { id = "legacy-reply", seq = 2, runId = run } };
+        var received = 0;
+        server.OverrideChatRead("chat.history", request =>
+        {
+            Assert.Equal(key, request.GetProperty("sessionKey").GetString());
+            var confirmation = Interlocked.Increment(ref received) == 2;
+            if (confirmation)
+            {
+                confirmationStarted.TrySetResult();
+                Assert.True(releaseConfirmation.Wait(HistoryMergeTimeout));
+            }
+            var items = confirmation && followUpQueued
+                ? new object[] { new { id = "durable-follow-up", state = "queued" } }
+                : Array.Empty<object>();
+            return new
+            {
+                sessionKey = key, sessionId, messages = new object[] { prompt, reply },
+                sessionInfo = new { sessionId, lastRunId = confirmation && !sameRun ? "new-run" : run,
+                    status = "done", hasActiveRun = false },
+                pendingInputs = new { items, total = items.Length, queuedCount = 0 },
+            };
+        });
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(HistoryMergeTimeout);
+        await server.PublishTranscriptEventAsync("session.message", new { sessionKey = key, sessionId,
+            status = "running", hasActiveRun = true, message = prompt });
+        await server.PublishTranscriptEventAsync("session.message", new { sessionKey = key, sessionId,
+            status = "running", hasActiveRun = true, runId = run, message = reply });
+        await replyPainted.Task.WaitAsync(HistoryMergeTimeout);
+        Assert.Equal(0, Volatile.Read(ref received));
+
+        var load = provider.LoadHistoryAsync(key, force: true);
+        try
+        {
+            await Task.WhenAny(confirmationStarted.Task, load).WaitAsync(HistoryMergeTimeout);
+            Assert.True((await provider.LoadAsync()).Timelines[key].TurnActive,
+                "A stale-empty legacy terminal cannot settle activity before an independent read returns.");
+            Assert.True(confirmationStarted.Task.IsCompletedSuccessfully, "The legacy terminal must trigger one fresh queue read.");
+        }
+        finally { releaseConfirmation.Set(); }
+        await load.WaitAsync(HistoryMergeTimeout);
+        Assert.Equal(2, Volatile.Read(ref received));
+        Assert.Equal(followUpQueued || !sameRun, (await provider.LoadAsync()).Timelines[key].TurnActive);
+        await client.DisconnectAsync();
+    }
+
     public enum ExternalTranscriptRecovery
     {
         IdleListBeforeSavedReply,
@@ -585,7 +664,7 @@ public sealed class InteractiveGatewayChatTests
                     hasActiveRun = false, lastRunId = run, runId = run, message = reply });
             }
             await settled.Task.WaitAsync(HistoryMergeTimeout);
-            Assert.Equal(new long?[] { null }, cursors);
+            Assert.Equal(new long?[] { null, null }, cursors);
         }
         string[] transcript = newerPrompt ? ["External prompt", "Newer external prompt", "Delivered reply"]
             : ["External prompt", "Delivered reply"];
