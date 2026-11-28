@@ -51,6 +51,20 @@ internal static class MxcCompanionPackagePaths
         }
     }
 
+    internal static string ScratchRoot(MxcCompanionPackage package, string unredirectedLocalAppData)
+    {
+        if (DataLeaf(package) is null || package.IsFramework || package.IsResourcePackage)
+            throw new InvalidOperationException("The current package is not a supported Companion.");
+        RequireFamilyName(package);
+        if (!Path.IsPathFullyQualified(unredirectedLocalAppData))
+            throw new InvalidOperationException("Windows did not supply an absolute local app data path.");
+        var local = Path.TrimEndingDirectorySeparator(Path.GetFullPath(unredirectedLocalAppData));
+        if (local == Path.GetPathRoot(local))
+            throw new InvalidOperationException("Local app data cannot be a volume root.");
+
+        return Path.Combine(local, "Packages", package.FamilyName, "LocalCache", "Local", "OpenClawMxc", "Runs");
+    }
+
     private static string? DataLeaf(MxcCompanionPackage package)
     {
         if (string.Equals(package.Name, "OpenClawFoundation.OpenClaw", StringComparison.OrdinalIgnoreCase) &&
