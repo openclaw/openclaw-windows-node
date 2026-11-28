@@ -31,7 +31,7 @@ See [choosing a gateway on first launch](https://docs.openclaw.ai/platforms/wind
 
 ## Uninstall
 
-Go to **Settings → Apps → Installed apps**, find **OpenClaw Companion**, and click **Uninstall** (or use **Add or Remove Programs** in Control Panel). You'll be asked whether to also remove the local WSL gateway; choose **Yes** to unregister its WSL distro and generated state, or **No** to leave the gateway and that state in place.
+Go to **Settings → Apps → Installed apps**, find **OpenClaw Companion**, and click **Uninstall** (or use **Add or Remove Programs** in Control Panel). You'll be asked whether to also remove the local WSL gateway; choose **Yes** to unregister its WSL distro and generated state, or **No** to leave the gateway and that state in place. A silent uninstall, including the default `winget uninstall`, leaves them in place. To remove them unattended, run `unins000.exe /VERYSILENT /RemoveLocalGateway=yes`.
 
 Your settings file at `%APPDATA%\OpenClawTray\settings.json` is not removed automatically, and device identity files for gateways unrelated to the one you removed are preserved. Choosing **Yes** also removes the removed gateway's own identity directory under `%APPDATA%\OpenClawTray\gateways\`. Root operator and node tokens are preserved only while an external gateway record remains; otherwise they are cleared, even if another local or loopback gateway record remains. Delete `%APPDATA%\OpenClawTray\` manually for a fully clean uninstall. See [docs/SETUP.md](docs/SETUP.md#uninstalling) for details, including the headless `--uninstall --confirm-destructive` CLI path used for testing.
 
